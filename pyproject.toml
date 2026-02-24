@@ -1,2 +1,4 @@
 [tool.basedpyright]
 reportMissingTypeStubs = "none"
+reportUnknownVariableType = "none"
+reportUnknownMemberType = "none"

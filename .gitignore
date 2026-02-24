@@ -15,3 +15,5 @@ build/
 
 .env
 .env.*
+
+*.dll

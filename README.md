@@ -1,5 +1,11 @@
 # Audient EVO 4 - USB sound mixer reverse engineered
 
+## Installation
+
+Requirements:
+  - pyusb: https://github.com/pyusb/pyusb
+    - libusb (backend): https://github.com/libusb/libusb
+
 ## USB
 
 4 USB transfer types:
@@ -28,3 +34,4 @@
 
 Helpers:
 usb.transfer_type
+
