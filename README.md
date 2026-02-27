@@ -1,10 +1,21 @@
 # Audient EVO 4 - USB sound mixer reverse engineered
 
+- Input select
+  - Gain
+  - Mute
+  - Phantom Power
+- Monitor mix
+  - Input/Output ratio
+- Output volume
+  - 0-100 volume
+  - mute
+
 ## Installation
 
 Requirements:
-  - pyusb: https://github.com/pyusb/pyusb
-    - libusb (backend): https://github.com/libusb/libusb
+
+- pyusb: https://github.com/pyusb/pyusb
+  - libusb (backend): https://github.com/libusb/libusb
 
 ## USB
 
@@ -34,4 +45,3 @@ Requirements:
 
 Helpers:
 usb.transfer_type
-
