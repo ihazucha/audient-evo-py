@@ -24,7 +24,7 @@ Requirements:
 - 0x00 - control - config messages, bidirect, guaranteed delivery (e.g. setup commands).
 - 0x01 - isochronous - data steam, best-effort, guaranteed bandwidth (audio/video streams).
 - 0x02 - bulk - large data, error-correction, no timing guarantee (USB storage).
-- 0x03 - interrupt - small periodic transfers, guaranteed latency (HID devices [keyboards, mice] - dev->host notifications)
+- 0x03 - interrupt - small periodic transfers, guaranteed latency (HID devices \[keyboards, mice\] - dev->host notifications)
 
 || usb.bmRequestType == 0xC0 || usb.bmRequestType == 0x21 || usb.bmRequestType == 0xA1
 
@@ -45,3 +45,17 @@ Requirements:
 
 Helpers:
 usb.transfer_type
+
+## Workflow
+
+Fast switching between:
+1. *Audient driver and app)*, analyse using *USBPcap/Wireshark*
+2. Python script using *pyusb* with *libusb* backend
+  - Installed WinUSB driver using *Zadig*
+
+
+> Enable-PnpDevice -InstanceId "USB\VID_2708&PID_0006\7&331A732E&0&1"
+
+> (Get-PnpDevice | Where-Object { $_.InstanceId -like '*VID_2708&PID_0006*' -and $_.Class -like 'USBDevice' -and $_.Status -like 'OK' }).InstanceId
+
+> Disable-PnpDevice -InstanceId "USB\VID_2708&PID_0006\7&331A732E&0&1"

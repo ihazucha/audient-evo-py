@@ -13,15 +13,23 @@ EVO4_ID = 0x0006
 USB_INTERFACE = 0x00 # wIndex
 
 @contextmanager
-def claim_usb_interface(device: usb.core.Device, interface: int):
-    was_kernel_driver_active = device.is_kernel_driver_active(interface)
-    if was_kernel_driver_active:
-        device.detach_kernel_driver(interface)
-    usb.util.claim_interface(device, interface)
-    yield
-    usb.util.release_interface(device, interface)
-    if was_kernel_driver_active:
-        device.attach_kernel_driver(interface)
+def claim_usb_interface(device:usb.core.Device, interface:int):
+    try:
+        device.set_interface_altsetting(interface=interface)
+        yield
+    finally:
+        pass
+
+# @contextmanager
+# def claim_usb_interface(device: usb.core.Device, interface: int):
+#     was_kernel_driver_active = device.is_kernel_driver_active(interface)
+#     if was_kernel_driver_active:
+#         device.detach_kernel_driver(interface)
+#     usb.util.claim_interface(device, interface)
+#     yield
+#     usb.util.release_interface(device, interface)
+#     if was_kernel_driver_active:
+#         device.attach_kernel_driver(interface)
 
 def volume_percent_to_dB(volume:int) -> float:
     """Map volume 0-100 to dB -96.0-0.0 with a power curve anchored at 50 -> -20 dB."""
