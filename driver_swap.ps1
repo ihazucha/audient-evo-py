@@ -25,11 +25,11 @@ if (-not (Test-Path $audientInfPath)) {
 # Check file contents for keywords
 if ($isConfigOk) {
   if (-not (Get-Content $winUsbInfPath | Select-String -Pattern 'winusb' -SimpleMatch -CaseSensitive:$false)) {
-    Write-Host "[E] Required keyword 'winusb' not found in $winUsbInfPath" -BackgroundColor Red
+    Write-Host "[E] Keyword 'winusb' not found in $winUsbInfPath. Possibly wrong driver selected." -BackgroundColor Red
     $isConfigOk = $false
   }
   if (-not (Get-Content $audientInfPath | Select-String -Pattern 'audient' -SimpleMatch -CaseSensitive:$false)) {
-    Write-Host "[E] Required keyword 'audient' not found in $audientInfPath" -BackgroundColor Red
+    Write-Host "[E] Required keyword 'audient' not found in $audientInfPath. Possibly wrong driver selected." -BackgroundColor Red
     $isConfigOk = $false
   }
 }

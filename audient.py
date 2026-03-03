@@ -1,35 +1,36 @@
-#!python
-
-from usb.backend.libusb1 import get_backend
-import usb.core
 import argparse
-
 import sys
 import math
 from contextlib import contextmanager
+
+from usb.backend.libusb1 import get_backend
+import usb.core
+
 
 AUDIENT_VENDOR_ID = 0x2708
 EVO4_ID = 0x0006
 USB_INTERFACE = 0x00 # wIndex
 
 @contextmanager
-def claim_usb_interface(device:usb.core.Device, interface:int):
-    try:
-        device.set_interface_altsetting(interface=interface)
+def detach_kernel_driver(device: usb.core.Device, interface: int):
+    # Windows: expects WinUSB or such generic USB driver to be set
+    if sys.platform == "win32":
         yield
-    finally:
-        pass
+        return
+    # Linux: hot-swap auto-attached kernel driver
+    was_kernel_driver_active = device.is_kernel_driver_active(interface)
+    if was_kernel_driver_active:
+        device.detach_kernel_driver(interface)
+    yield
+    if was_kernel_driver_active:
+        device.attach_kernel_driver(interface)
 
-# @contextmanager
-# def claim_usb_interface(device: usb.core.Device, interface: int):
-#     was_kernel_driver_active = device.is_kernel_driver_active(interface)
-#     if was_kernel_driver_active:
-#         device.detach_kernel_driver(interface)
-#     usb.util.claim_interface(device, interface)
-#     yield
-#     usb.util.release_interface(device, interface)
-#     if was_kernel_driver_active:
-#         device.attach_kernel_driver(interface)
+@contextmanager
+def claim_usb_interface(device: usb.core.Device, interface: int):
+    with detach_kernel_driver(device, interface):
+        usb.util.claim_interface(device, interface)
+        yield
+        usb.util.release_interface(device, interface)
 
 def volume_percent_to_dB(volume:int) -> float:
     """Map volume 0-100 to dB -96.0-0.0 with a power curve anchored at 50 -> -20 dB."""
@@ -58,17 +59,17 @@ def parse_args():
         "-v", "--volume",
         type=int,
         metavar="VOLUME",
-        required=True,
         help="Set the output volume (0-100)."
     )
 
     class Args(argparse.Namespace):
-        volume: int = 0
-
+        volume: int | None = None
     args = parser.parse_args(namespace=Args())
-    if not (0 <= args.volume <= 100):
+    if args.volume is not None and not (0 <= args.volume <= 100):
         parser.error("Volume must be between 0 and 100.")
 
+    if not any(list(vars(args).values())):
+       parser.error("No arguments provided.") 
     return args
 
 if __name__ == "__main__":
@@ -83,6 +84,7 @@ if __name__ == "__main__":
     dev = usb.core.find(idVendor=AUDIENT_VENDOR_ID, idProduct=EVO4_ID, backend=backend)
     assert isinstance(dev, usb.core.Device), f"Device vID:{AUDIENT_VENDOR_ID:#0x} pID:{EVO4_ID:#0x} not found"
 
-    dB = volume_percent_to_dB(args.volume)
-    res = set_volume_dB(dev, dB)
-    print(res)
+    if args.volume is not None:
+        dB = volume_percent_to_dB(args.volume)
+        res = set_volume_dB(dev, dB)
+        print(f"[SET] Volume: {args.volume}")
