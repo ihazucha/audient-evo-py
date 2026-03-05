@@ -72,6 +72,7 @@ def get_volume_dB(device: usb.core.Device) -> float:
     db_fixed_point = int.from_bytes(data, byteorder='little', signed=True)
     return db_fixed_point / 256.0
 
+
 def get_volume(device: usb.core.Device) -> int:
     return dB_to_volume_percent(get_volume_dB(device))
 

@@ -18,5 +18,5 @@ build/
 .env
 .env.*
 
+dev/
 *.dll
-*.pcapng

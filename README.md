@@ -1,5 +1,9 @@
 # Audient EVO 4 - reverse engineered multiplatform controller
 
+## TODO
+
+is there a way to inject the audient driver such that I can control it while 
+
 ## EVO 4 Specification
 
 Functions:
