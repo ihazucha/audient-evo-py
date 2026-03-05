@@ -3,7 +3,7 @@
 $hardwareId = 'USB\VID_2708&PID_0006'
 $devconExePath = "C:\Program Files (x86)\AMD\Chipset_Software\Prerequisites\devcon.exe"
 $winUsbInfPath = "C:\Windows\INF\oem146.inf"
-$audientInfPath = "C:\Windows\INF\oem161.inf"
+$audientInfPath = "C:\Windows\INF\oem18.inf"
 
 
 # Config check
