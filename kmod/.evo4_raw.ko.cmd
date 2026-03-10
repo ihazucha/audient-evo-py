@@ -1,0 +1,1 @@
+savedcmd_evo4_raw.ko := ld -r -m elf_x86_64 -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T /usr/lib/modules/6.19.6-arch1-1/build/scripts/module.lds -o evo4_raw.ko evo4_raw.o evo4_raw.mod.o .module-common.o
