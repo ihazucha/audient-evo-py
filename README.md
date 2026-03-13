@@ -2,7 +2,11 @@
 
 ## TODO
 
-is there a way to inject the audient driver such that I can control it while 
+1. implement input select, mute and phantom power
+2. unify interface - maybe only use custom driver
+3. package it
+4. DKMS setup for kernel module auto-rebuild on kernel upgrades
+  - figure out how it works, make proper package name, document
 
 ## EVO 4 Specification
 

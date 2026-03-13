@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 # ALSA control names (from alsaaudio.mixers())
 CTRL_OUTPUT_VOLUME = "EVO4 "          # Feature Unit 10, 4ch, range 0-254
 CTRL_INPUT_GAIN = "Mic"               # Feature Unit 11, 4ch, range 0-116
-CTRL_EXT_SWITCH = "Extension Unit"    # Extension Unit 59, boolean (mute)
+
 
 
 def _find_card_index() -> int:
@@ -48,21 +48,39 @@ class EVO4Controller:
         return alsaaudio.Mixer(control=control, cardindex=self.card_index)
 
     # --- Output Volume (Feature Unit 10) ---
-    # ALSA range: -12700..0 cB (centibels), i.e. -127.00..0.00 dB
+    # ALSA raw range: 0..254, linear in dB (-127.00..0.00 dB).
+    # Perceptual curve: raw = 254 * (1 - (1 - p/100)^2)
+    # Maps 50% → ~-32 dB instead of linear's -63.5 dB.
+
+    _VOL_MAX_RAW = 254
+
+    @staticmethod
+    def _pct_to_raw(percent: int) -> int:
+        """Convert perceptual 0-100% to raw 0-254 using cubic curve."""
+        p = max(0, min(100, percent)) / 100.0
+        return round(254 * (1.0 - (1.0 - p) ** 2))
+
+    @staticmethod
+    def _raw_to_pct(raw: int) -> int:
+        """Convert raw 0-254 to perceptual 0-100% (inverse cubic)."""
+        r = max(0, min(254, raw)) / 254.0
+        return round(100.0 * (1.0 - (1.0 - r) ** 0.5))
 
     def get_volume(self) -> list[int]:
         """Get output volume as list of per-channel percentages (0-100)."""
         m = self._mixer(CTRL_OUTPUT_VOLUME)
-        return m.getvolume()
+        return [self._raw_to_pct(round(v * 254 / 100)) for v in m.getvolume()]
 
     def set_volume(self, percent: int, channel: int | None = None):
         """Set output volume (0-100). channel is 1-based, None = all 4."""
         m = self._mixer(CTRL_OUTPUT_VOLUME)
+        # Convert perceptual % to raw, then to alsaaudio's linear %
+        alsa_pct = round(self._pct_to_raw(percent) * 100 / 254)
         if channel is not None:
-            m.setvolume(percent, channel - 1)
+            m.setvolume(alsa_pct, channel - 1)
         else:
             for ch in range(4):
-                m.setvolume(percent, ch)
+                m.setvolume(alsa_pct, ch)
 
     # --- Input Gain (Feature Unit 11) ---
     # ALSA range: -800..5000 cB, i.e. -8.00..+50.00 dB
@@ -81,18 +99,32 @@ class EVO4Controller:
             for ch in range(4):
                 m.setvolume(percent, ch)
 
-    # --- Mute (Extension Unit 59) ---
+    # --- Mute (via kmod: Entity 58 for inputs, Entity 59 for output) ---
+    # Data: 4 bytes LE, 0x01=muted, 0x00=unmuted
 
-    def get_mute(self) -> bool:
-        """Get mute state."""
-        m = self._mixer(CTRL_EXT_SWITCH)
-        mute_vals = m.getmute()
-        return mute_vals[0] == 1  # 1 = muted
+    _MUTE_TARGETS = {
+        "input1": (0x0200, 0x3A00),  # Entity 58, CS=2, CN=0
+        "input2": (0x0201, 0x3A00),  # Entity 58, CS=2, CN=1
+        "output": (0x0100, 0x3B00),  # Entity 59, CS=1, CN=0
+    }
 
-    def set_mute(self, muted: bool):
-        """Set mute state."""
-        m = self._mixer(CTRL_EXT_SWITCH)
-        m.setmute(1 if muted else 0)
+    def get_mute(self, target: str) -> bool:
+        """Get mute state for target (input1, input2, output)."""
+        wValue, wIndex = self._MUTE_TARGETS[target]
+        self._require_kmod()
+        import evo4_kmod
+        with evo4_kmod.open_device() as fd:
+            data = evo4_kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=4)
+            return int.from_bytes(data[:4], "little") == 1
+
+    def set_mute(self, target: str, muted: bool):
+        """Set mute state for target (input1, input2, output)."""
+        wValue, wIndex = self._MUTE_TARGETS[target]
+        self._require_kmod()
+        import evo4_kmod
+        with evo4_kmod.open_device() as fd:
+            data = (1 if muted else 0).to_bytes(4, "little")
+            evo4_kmod.set_cur(fd, wValue=wValue, wIndex=wIndex, data=data)
 
     # --- Monitor Mix (Extension Unit 56) ---
     # Hardware monitor mix is controlled via EU56 CS=0 CN=0.
@@ -125,42 +157,16 @@ class EVO4Controller:
             evo4_kmod.set_cur(fd, wValue=self._EU56_WVALUE,
                               wIndex=self._EU56_WINDEX, data=data)
 
+    def _require_kmod(self):
+        if not self._has_kmod():
+            raise RuntimeError("Monitor mix requires the evo4_raw kernel module (/dev/evo4)")
+
     def get_mix(self) -> int:
-        """Get monitor mix ratio (0=input only, 100=playback only).
-
-        Uses Mixer Unit 60 via kernel module if available, otherwise
-        approximates from volume/gain ratio.
-        """
-        if self._has_kmod():
-            try:
-                return self._kmod_get_mix()
-            except Exception as e:
-                log.warning("kmod mix read failed, using fallback: %s", e)
-
-        log.warning("not using kmod")
-        # Fallback: approximate from volume/gain balance
-        out_vols = self.get_volume()
-        in_gains = self.get_gain()
-        avg_out = sum(out_vols[:2]) / min(len(out_vols), 2)
-        avg_in = sum(in_gains[:2]) / min(len(in_gains), 2)
-        total = avg_out + avg_in
-        if total == 0:
-            return 50
-        return round(100 * avg_out / total)
+        """Get monitor mix ratio (0=input only, 100=playback only)."""
+        self._require_kmod()
+        return self._kmod_get_mix()
 
     def set_mix(self, ratio: int):
-        """Set monitor mix ratio (0=input only, 100=playback only).
-
-        Uses Mixer Unit 60 via kernel module if available, otherwise
-        adjusts volume/gain as approximation.
-        """
-        if self._has_kmod():
-            try:
-                self._kmod_set_mix(ratio)
-                return
-            except Exception as e:
-                log.warning("kmod mix write failed, using fallback: %s", e)
-
-        # Fallback: adjust gain and volume proportionally
-        self.set_gain(100 - ratio)
-        self.set_volume(ratio)
+        """Set monitor mix ratio (0=input only, 100=playback only)."""
+        self._require_kmod()
+        self._kmod_set_mix(ratio)
