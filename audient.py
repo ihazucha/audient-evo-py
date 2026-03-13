@@ -1,13 +1,5 @@
 import argparse
-import sys
-
-if sys.platform == "linux":
-    from evo4_alsa import EVO4Controller
-elif sys.platform == "win32":
-    from evo4_usb import EVO4Controller
-else:
-    sys.exit(f"Unsupported platform: {sys.platform}")
-
+from evo4_alsa import EVO4Controller
 
 PARAMETERS = ['volume', 'gain', 'mute', 'mix']
 
@@ -15,16 +7,22 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Control Audient EVO4 settings.")
     subparsers = parser.add_subparsers(dest='action', required=True)
 
+    MUTE_TARGETS = ['input1', 'input2', 'output']
+
     get_parser = subparsers.add_parser('get', aliases=['g'], help='Get a device parameter.')
     get_parser.add_argument('parameter', choices=PARAMETERS)
     get_parser.add_argument('--channel', '-c', type=int, default=None,
                             help='Channel number (1-based). Omit for all channels.')
+    get_parser.add_argument('--target', '-t', choices=MUTE_TARGETS, default=None,
+                            help='Mute target (input1, input2, output).')
 
     set_parser = subparsers.add_parser('set', aliases=['s'], help='Set a device parameter.')
     set_parser.add_argument('parameter', choices=PARAMETERS)
     set_parser.add_argument('value', type=str)
     set_parser.add_argument('--channel', '-c', type=int, default=None,
                             help='Channel number (1-based). Omit for all channels.')
+    set_parser.add_argument('--target', '-t', choices=MUTE_TARGETS, default=None,
+                            help='Mute target (input1, input2, output).')
 
     args = parser.parse_args()
 
@@ -47,6 +45,9 @@ def parse_args():
                 args.value = False
             else:
                 parser.error("Mute value must be on/off, true/false, or 1/0.")
+
+    if args.parameter == 'mute' and not args.target:
+        parser.error("Mute requires --target/-t (input1, input2, or output).")
 
     return args
 
@@ -73,8 +74,8 @@ if __name__ == "__main__":
                     print(f"[GET] Gain ch{i}: {v}%")
 
         elif args.parameter == 'mute':
-            muted = evo.get_mute()
-            print(f"[GET] Mute: {'on' if muted else 'off'}")
+            muted = evo.get_mute(args.target)
+            print(f"[GET] Mute {args.target}: {'on' if muted else 'off'}")
 
         elif args.parameter == 'mix':
             mix = evo.get_mix()
@@ -92,8 +93,8 @@ if __name__ == "__main__":
                   + (f" ch{args.channel}" if args.channel else ""))
 
         elif args.parameter == 'mute':
-            evo.set_mute(args.value)
-            print(f"[SET] Mute: {'on' if args.value else 'off'}")
+            evo.set_mute(args.target, args.value)
+            print(f"[SET] Mute {args.target}: {'on' if args.value else 'off'}")
 
         elif args.parameter == 'mix':
             evo.set_mix(args.value)
