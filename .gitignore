@@ -17,6 +17,3 @@ build/
 
 .env
 .env.*
-
-dev/
-*.dll

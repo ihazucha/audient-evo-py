@@ -1,22 +1,19 @@
-"""Audient EVO4 controller using the evo4_raw kernel module (Linux).
+"""Audient EVO4 controller — all controls via evo4_raw kernel module.
 
-All controls go through /dev/evo4 which sends USB control transfers
-via the evo4_raw kernel module without disrupting audio streaming.
+Controls go through /dev/evo4 (USB control transfers) without
+disrupting snd-usb-audio streaming.
 
 Controls:
-  Feature Unit 10: output volume, 4ch, -127.00..0.00 dB
-  Feature Unit 11: input gain, 4ch, -8.00..+50.00 dB
+  Feature Unit 10: output volume, -127.00..0.00 dB
+  Feature Unit 11: input gain, -8.00..+50.00 dB
   Extension Unit 56: monitor mix, 0..127
   Extension Unit 58/59: mute toggles
 """
 
 import math
-import os
-import logging
+from os.path import exists
 
-import evo4_kmod
-
-log = logging.getLogger(__name__)
+from evo4 import kmod
 
 
 # UAC2 Feature Unit control selectors
@@ -60,24 +57,24 @@ class EVO4Controller:
     @staticmethod
     def _vol_pct_to_db(percent: int) -> float:
         p = max(0, min(100, percent)) / 100.0
-        return -96.0 * (1.0 - p ** _VOL_CURVE_N)
+        return _VOL_DB_MIN * (1.0 - p ** _VOL_CURVE_N)
 
     @staticmethod
     def _vol_db_to_pct(db: float) -> int:
         db = max(_VOL_DB_MIN, min(_VOL_DB_MAX, db))
-        return round(100.0 * (1.0 + db / 96.0) ** (1.0 / _VOL_CURVE_N))
+        return round(100.0 * (1.0 - db / _VOL_DB_MIN) ** (1.0 / _VOL_CURVE_N))
 
     def _get_fu_raw(self, unit: int, cn: int) -> int:
         """Read raw 16-bit USB value from a Feature Unit channel."""
-        with evo4_kmod.open_device() as fd:
-            data = evo4_kmod.get_cur(fd, wValue=(_CS_VOLUME << 8) | cn,
+        with kmod.open_device() as fd:
+            data = kmod.get_cur(fd, wValue=(_CS_VOLUME << 8) | cn,
                                      wIndex=unit, length=2)
             return int.from_bytes(data[:2], "little", signed=True)
 
     def _set_fu_raw(self, unit: int, cn: int, raw: int):
         """Write raw 16-bit USB value to a Feature Unit channel."""
-        with evo4_kmod.open_device() as fd:
-            evo4_kmod.set_cur(fd, wValue=(_CS_VOLUME << 8) | cn,
+        with kmod.open_device() as fd:
+            kmod.set_cur(fd, wValue=(_CS_VOLUME << 8) | cn,
                               wIndex=unit, data=(raw & 0xFFFF).to_bytes(2, "little"))
 
     def get_volume(self) -> list[int]:
@@ -159,16 +156,16 @@ class EVO4Controller:
     def get_mute(self, target: str) -> bool:
         """Get mute state for target (input1, input2, output)."""
         wValue, wIndex = self._MUTE_TARGETS[target]
-        with evo4_kmod.open_device() as fd:
-            data = evo4_kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=4)
+        with kmod.open_device() as fd:
+            data = kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=4)
             return int.from_bytes(data[:4], "little") == 1
 
     def set_mute(self, target: str, muted: bool):
         """Set mute state for target (input1, input2, output)."""
         wValue, wIndex = self._MUTE_TARGETS[target]
-        with evo4_kmod.open_device() as fd:
+        with kmod.open_device() as fd:
             data = (1 if muted else 0).to_bytes(4, "little")
-            evo4_kmod.set_cur(fd, wValue=wValue, wIndex=wIndex, data=data)
+            kmod.set_cur(fd, wValue=wValue, wIndex=wIndex, data=data)
 
     # --- Monitor Mix (Extension Unit 56) ---
     # Linear range: 0 = full input, 127 = full playback.
@@ -176,25 +173,22 @@ class EVO4Controller:
     _EU56_WINDEX = 0x3800   # (EntityID=0x38 << 8) | Interface=0
     _EU56_WVALUE = 0x0000   # (CS=0 << 8) | CN=0
 
-    def _has_kmod(self) -> bool:
-        return os.path.exists("/dev/evo4")
-
     def _require_kmod(self):
-        if not self._has_kmod():
-            raise RuntimeError("EVO4 controller requires the evo4_raw kernel module (/dev/evo4)")
+        if not exists("/dev/evo4"):
+            raise RuntimeError("evo4_raw kernel module not loaded (/dev/evo4 not found)")
 
     def get_mix(self) -> int:
         """Get monitor mix ratio (0=input only, 100=playback only)."""
-        with evo4_kmod.open_device() as fd:
-            data = evo4_kmod.get_cur(fd, wValue=self._EU56_WVALUE,
+        with kmod.open_device() as fd:
+            data = kmod.get_cur(fd, wValue=self._EU56_WVALUE,
                                      wIndex=self._EU56_WINDEX, length=2)
             raw = int.from_bytes(data[:2], "little")
             return round(raw * 100 / 127)
 
     def set_mix(self, ratio: int):
         """Set monitor mix ratio (0=input only, 100=playback only)."""
-        with evo4_kmod.open_device() as fd:
+        with kmod.open_device() as fd:
             raw = max(0, min(127, round(ratio * 127 / 100)))
             data = raw.to_bytes(2, "little")
-            evo4_kmod.set_cur(fd, wValue=self._EU56_WVALUE,
+            kmod.set_cur(fd, wValue=self._EU56_WVALUE,
                               wIndex=self._EU56_WINDEX, data=data)

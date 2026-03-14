@@ -50,7 +50,7 @@ def ctrl_transfer(fd, bRequestType, bRequest, wValue, wIndex, data=b"", length=N
 
 
 def open_device():
-    """Open /dev/evo4 for ioctl access. Returns file descriptor (int)."""
+    """Open /dev/evo4 for ioctl access. Use as context manager."""
     return open(DEV_PATH, "rb")
 
 

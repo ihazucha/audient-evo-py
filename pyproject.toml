@@ -1,3 +1,10 @@
+[project]
+name = "audient-evo4"
+version = "0.1.0"
+description = "Linux controller for Audient EVO 4 USB audio interface"
+license = "Unlicense"
+requires-python = ">=3.10"
+
 [tool.basedpyright]
 reportMissingTypeStubs = "none"
 reportUnknownVariableType = "none"

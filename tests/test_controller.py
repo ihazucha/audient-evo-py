@@ -6,7 +6,7 @@ Each test saves the current value, sets a new value, verifies it, then restores.
 import time
 import pytest
 
-from evo4_alsa import EVO4Controller, _db_to_usb, _usb_to_db
+from evo4.controller import EVO4Controller, _db_to_usb, _usb_to_db
 
 
 @pytest.fixture(scope="module")

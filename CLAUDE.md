@@ -1,29 +1,35 @@
 # CLAUDE.md
 
-## Project goals
+## Project
 
-- Linux-only Python control script for Audient EVO 4 sound mixer that:
-  - allows device control and settings polling using USB control transfers via kernel module
-  - does not interrupt ongoing audio transmission (coexists with snd-usb-audio)
-- For functionality and overall project details read @./README.md
+Linux-only Python controller for Audient EVO 4 USB audio interface.
+Uses a custom kernel module (`evo4_raw`) to send USB control transfers
+alongside `snd-usb-audio`. See [README.md](README.md) for usage and
+[DESIGN.md](DESIGN.md) for architecture and protocol details.
 
-## Running the script
+## Running
 
 ```bash
-# Linux — requires evo4_raw kernel module loaded
-# Example: set volume (0-100)
-python audient.py set volume 75
-
-# Get current state
-python audient.py get volume
-python audient.py get mute -t output
-python audient.py set mix 50
+python evoctl.py set volume 75
+python evoctl.py get volume
+python evoctl.py set mix 50
+python evoctl.py get mute -t output
 ```
 
-## Architecture
+Requires `evo4_raw` kernel module loaded (`/dev/evo4` must exist).
 
-- `audient.py` — CLI entry point with get/set subcommands
-- `evo4_alsa.py` — `EVO4Controller` class, all controls via kernel module ioctl
-- `evo4_kmod.py` — Python wrapper for `/dev/evo4` ioctl (raw USB control transfers)
-- `kmod/evo4_raw.c` — out-of-tree kernel module that coexists with snd-usb-audio
-- See `FINDINGS.md` for USB protocol details and `PLAN.md` for design rationale
+## Structure
+
+- `evoctl.py` — CLI (argparse, get/set subcommands)
+- `evo4/controller.py` — `EVO4Controller` class, all controls via kmod ioctl
+- `evo4/kmod.py` — Python ioctl wrapper for `/dev/evo4`
+- `kmod/evo4_raw.c` — out-of-tree kernel module (~180 LOC)
+- `dev/` — reverse-engineering probe tools and raw findings
+- `tests/` — unit and integration tests
+
+## Testing
+
+```bash
+pytest tests/test_kmod.py          # unit tests (no hardware)
+pytest tests/test_controller.py    # integration tests (requires connected EVO4)
+```

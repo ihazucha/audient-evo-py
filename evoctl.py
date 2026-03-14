@@ -1,5 +1,5 @@
 import argparse
-from evo4_alsa import EVO4Controller
+from evo4.controller import EVO4Controller
 
 PARAMETERS = ['volume', 'gain', 'mute', 'mix']
 
@@ -32,12 +32,8 @@ def parse_args():
                 args.value = int(args.value)
             except ValueError:
                 parser.error(f"{args.parameter} value must be an integer.")
-            if args.parameter == 'volume' and not (0 <= args.value <= 100):
-                parser.error("Volume must be between 0 and 100.")
-            if args.parameter == 'gain' and not (0 <= args.value <= 100):
-                parser.error("Gain must be between 0 and 100.")
-            if args.parameter == 'mix' and not (0 <= args.value <= 100):
-                parser.error("Mix must be between 0 and 100 (0=input, 100=playback).")
+            if not (0 <= args.value <= 100):
+                parser.error(f"{args.parameter.capitalize()} must be between 0 and 100.")
         elif args.parameter == 'mute':
             if args.value.lower() in ('1', 'true', 'on'):
                 args.value = True
