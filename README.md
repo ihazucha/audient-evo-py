@@ -94,7 +94,19 @@ dev/
 ## TODO
 
 - Phantom power toggle (likely EU58)
-- Proper packaging 
+- Proper packaging
+- Figure out how to get the project visible on GitHub
+- Cross-compare with other projects:
+  - https://github.com/subsubl/Evo4mixer
+  - https://github.com/vijay-prema/audient-evo-linux-tools/tree/main
+  - https://github.com/soerenbnoergaard/evoctl
+  - https://github.com/TheOnlyJoey/MixiD
+  - https://github.com/charlesmulder/alsa-audient-id14
+  - https://github.com/r00tman/mymixer
+
+- Check how does PipeWire and ALSA go together with the current setup:
+- https://github.com/basecamp/omarchy/discussions/137
+- https://ro-che.info/articles/2020-07-10-audient-evo4-pulseaudio
 
 ## License
 
