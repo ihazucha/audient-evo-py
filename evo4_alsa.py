@@ -1,103 +1,151 @@
-"""Audient EVO4 controller using ALSA mixer controls (Linux).
+"""Audient EVO4 controller using the evo4_raw kernel module (Linux).
 
-Uses the snd-usb-audio kernel driver's mixer interface, which sends USB
-control transfers on our behalf without disrupting audio streaming.
+All controls go through /dev/evo4 which sends USB control transfers
+via the evo4_raw kernel module without disrupting audio streaming.
 
-ALSA controls exposed by snd-usb-audio for EVO4:
-  Unit 10: "EVO4  Playback Volume" - output volume, 4ch, -12700..0 cB
-  Unit 11: "Mic Playback Volume"   - input gain, 4ch, -800..5000 cB
-  Unit 59: "Extension Unit Switch"  - mute/monitor toggle, boolean
-
-Monitor mix (Mixer Unit 60) is NOT exposed by snd-usb-audio. When the
-evo4_raw kernel module is loaded (/dev/evo4), we use it for true hardware
-monitor mix control. Otherwise, falls back to a volume/gain approximation.
+Controls:
+  Feature Unit 10: output volume, 4ch, -127.00..0.00 dB
+  Feature Unit 11: input gain, 4ch, -8.00..+50.00 dB
+  Extension Unit 56: monitor mix, 0..127
+  Extension Unit 58/59: mute toggles
 """
 
-import alsaaudio
+import math
 import os
 import logging
+
+import evo4_kmod
 
 log = logging.getLogger(__name__)
 
 
-# ALSA control names (from alsaaudio.mixers())
-CTRL_OUTPUT_VOLUME = "EVO4 "          # Feature Unit 10, 4ch, range 0-254
-CTRL_INPUT_GAIN = "Mic"               # Feature Unit 11, 4ch, range 0-116
+# UAC2 Feature Unit control selectors
+_CS_VOLUME = 2
+
+# Feature Unit wIndex values: (EntityID << 8) | Interface
+_FU10 = 0x0A00  # Output volume
+_FU11 = 0x0B00  # Input gain
+
+# Volume (FU10): effective range -96..0 dB, power curve anchored at 50% → -20 dB
+_VOL_DB_MIN = -96.0
+_VOL_DB_MAX = 0.0
+_VOL_CURVE_N = math.log(1.0 - 20.0 / 96.0) / math.log(0.5)
+
+# Gain (FU11): -8.00..+50.00 dB
+_GAIN_DB_MIN = -8.0
+_GAIN_DB_MAX = 50.0
+
+_NUM_CHANNELS = 2      # CH1 and CH2 (UAC descriptor reports 4 but CH3-4 are internal)
 
 
+def _db_to_usb(db: float) -> int:
+    """Convert dB to UAC2 16-bit signed (1/256 dB steps)."""
+    return round(db * 256) & 0xFFFF
 
-def _find_card_index() -> int:
-    """Find the ALSA card index for the EVO4."""
-    for i in range(32):
-        try:
-            with open(f"/proc/asound/card{i}/id") as f:
-                if f.read().strip() == "EVO4":
-                    return i
-        except FileNotFoundError:
-            continue
-    raise RuntimeError("Audient EVO4 not found in ALSA cards")
+
+def _usb_to_db(raw: int) -> float:
+    """Convert UAC2 16-bit signed to dB."""
+    if raw > 0x7FFF:
+        raw -= 0x10000
+    return raw / 256.0
 
 
 class EVO4Controller:
-    def __init__(self, card_index: int | None = None):
-        self.card_index = card_index if card_index is not None else _find_card_index()
-        # Verify we can open the controls
-        self._mixer(CTRL_OUTPUT_VOLUME)
-
-    def _mixer(self, control: str) -> alsaaudio.Mixer:
-        return alsaaudio.Mixer(control=control, cardindex=self.card_index)
+    def __init__(self):
+        self._require_kmod()
 
     # --- Output Volume (Feature Unit 10) ---
-    # ALSA raw range: 0..254, linear in dB (-127.00..0.00 dB).
-    # Perceptual curve: raw = 254 * (1 - (1 - p/100)^2)
-    # Maps 50% → ~-32 dB instead of linear's -63.5 dB.
-
-    _VOL_MAX_RAW = 254
+    # Power curve: 50% → -20 dB, matching the EVO4 app's knob response
 
     @staticmethod
-    def _pct_to_raw(percent: int) -> int:
-        """Convert perceptual 0-100% to raw 0-254 using cubic curve."""
+    def _vol_pct_to_db(percent: int) -> float:
         p = max(0, min(100, percent)) / 100.0
-        return round(254 * (1.0 - (1.0 - p) ** 2))
+        return -96.0 * (1.0 - p ** _VOL_CURVE_N)
 
     @staticmethod
-    def _raw_to_pct(raw: int) -> int:
-        """Convert raw 0-254 to perceptual 0-100% (inverse cubic)."""
-        r = max(0, min(254, raw)) / 254.0
-        return round(100.0 * (1.0 - (1.0 - r) ** 0.5))
+    def _vol_db_to_pct(db: float) -> int:
+        db = max(_VOL_DB_MIN, min(_VOL_DB_MAX, db))
+        return round(100.0 * (1.0 + db / 96.0) ** (1.0 / _VOL_CURVE_N))
+
+    def _get_fu_raw(self, unit: int, cn: int) -> int:
+        """Read raw 16-bit USB value from a Feature Unit channel."""
+        with evo4_kmod.open_device() as fd:
+            data = evo4_kmod.get_cur(fd, wValue=(_CS_VOLUME << 8) | cn,
+                                     wIndex=unit, length=2)
+            return int.from_bytes(data[:2], "little", signed=True)
+
+    def _set_fu_raw(self, unit: int, cn: int, raw: int):
+        """Write raw 16-bit USB value to a Feature Unit channel."""
+        with evo4_kmod.open_device() as fd:
+            evo4_kmod.set_cur(fd, wValue=(_CS_VOLUME << 8) | cn,
+                              wIndex=unit, data=(raw & 0xFFFF).to_bytes(2, "little"))
 
     def get_volume(self) -> list[int]:
         """Get output volume as list of per-channel percentages (0-100)."""
-        m = self._mixer(CTRL_OUTPUT_VOLUME)
-        return [self._raw_to_pct(round(v * 254 / 100)) for v in m.getvolume()]
+        return [self._vol_db_to_pct(_usb_to_db(self._get_fu_raw(_FU10, cn)))
+                for cn in range(1, _NUM_CHANNELS + 1)]
 
-    def set_volume(self, percent: int, channel: int | None = None):
-        """Set output volume (0-100). channel is 1-based, None = all 4."""
-        m = self._mixer(CTRL_OUTPUT_VOLUME)
-        # Convert perceptual % to raw, then to alsaaudio's linear %
-        alsa_pct = round(self._pct_to_raw(percent) * 100 / 254)
+    def get_volume_debug(self) -> list[tuple[int, int, float]]:
+        """Get volume with debug info: list of (percent, raw, dB) per channel."""
+        result = []
+        for cn in range(1, _NUM_CHANNELS + 1):
+            raw = self._get_fu_raw(_FU10, cn)
+            db = _usb_to_db(raw)
+            pct = self._vol_db_to_pct(db)
+            result.append((pct, raw, db))
+        return result
+
+    def set_volume(self, percent: int, channel: int | None = None) -> tuple[int, float]:
+        """Set output volume (0-100). channel is 1-based, None = all active.
+        Returns (raw, dB) that was sent."""
+        db = self._vol_pct_to_db(percent)
+        raw = _db_to_usb(db)
         if channel is not None:
-            m.setvolume(alsa_pct, channel - 1)
+            self._set_fu_raw(_FU10, channel, raw)
         else:
-            for ch in range(4):
-                m.setvolume(alsa_pct, ch)
+            for cn in range(1, _NUM_CHANNELS + 1):
+                self._set_fu_raw(_FU10, cn, raw)
+        return (raw if raw <= 0x7FFF else raw - 0x10000, db)
 
     # --- Input Gain (Feature Unit 11) ---
-    # ALSA range: -800..5000 cB, i.e. -8.00..+50.00 dB
+    # Linear: 0% = -8 dB, 100% = +50 dB
+
+    @staticmethod
+    def _gain_pct_to_db(percent: int) -> float:
+        p = max(0, min(100, percent)) / 100.0
+        return _GAIN_DB_MIN + (_GAIN_DB_MAX - _GAIN_DB_MIN) * p
+
+    @staticmethod
+    def _gain_db_to_pct(db: float) -> int:
+        db = max(_GAIN_DB_MIN, min(_GAIN_DB_MAX, db))
+        return round(100.0 * (db - _GAIN_DB_MIN) / (_GAIN_DB_MAX - _GAIN_DB_MIN))
 
     def get_gain(self) -> list[int]:
         """Get input gain as list of per-channel percentages (0-100)."""
-        m = self._mixer(CTRL_INPUT_GAIN)
-        return m.getvolume()
+        return [self._gain_db_to_pct(_usb_to_db(self._get_fu_raw(_FU11, cn)))
+                for cn in range(1, _NUM_CHANNELS + 1)]
 
-    def set_gain(self, percent: int, channel: int | None = None):
-        """Set input gain (0-100). channel is 1-based, None = all 4."""
-        m = self._mixer(CTRL_INPUT_GAIN)
+    def get_gain_debug(self) -> list[tuple[int, int, float]]:
+        """Get gain with debug info: list of (percent, raw, dB) per channel."""
+        result = []
+        for cn in range(1, _NUM_CHANNELS + 1):
+            raw = self._get_fu_raw(_FU11, cn)
+            db = _usb_to_db(raw)
+            pct = self._gain_db_to_pct(db)
+            result.append((pct, raw, db))
+        return result
+
+    def set_gain(self, percent: int, channel: int | None = None) -> tuple[int, float]:
+        """Set input gain (0-100). channel is 1-based, None = all active.
+        Returns (raw, dB) that was sent."""
+        db = self._gain_pct_to_db(percent)
+        raw = _db_to_usb(db)
         if channel is not None:
-            m.setvolume(percent, channel - 1)
+            self._set_fu_raw(_FU11, channel, raw)
         else:
-            for ch in range(4):
-                m.setvolume(percent, ch)
+            for cn in range(1, _NUM_CHANNELS + 1):
+                self._set_fu_raw(_FU11, cn, raw)
+        return (raw if raw <= 0x7FFF else raw - 0x10000, db)
 
     # --- Mute (via kmod: Entity 58 for inputs, Entity 59 for output) ---
     # Data: 4 bytes LE, 0x01=muted, 0x00=unmuted
@@ -111,8 +159,6 @@ class EVO4Controller:
     def get_mute(self, target: str) -> bool:
         """Get mute state for target (input1, input2, output)."""
         wValue, wIndex = self._MUTE_TARGETS[target]
-        self._require_kmod()
-        import evo4_kmod
         with evo4_kmod.open_device() as fd:
             data = evo4_kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=4)
             return int.from_bytes(data[:4], "little") == 1
@@ -120,17 +166,12 @@ class EVO4Controller:
     def set_mute(self, target: str, muted: bool):
         """Set mute state for target (input1, input2, output)."""
         wValue, wIndex = self._MUTE_TARGETS[target]
-        self._require_kmod()
-        import evo4_kmod
         with evo4_kmod.open_device() as fd:
             data = (1 if muted else 0).to_bytes(4, "little")
             evo4_kmod.set_cur(fd, wValue=wValue, wIndex=wIndex, data=data)
 
     # --- Monitor Mix (Extension Unit 56) ---
-    # Hardware monitor mix is controlled via EU56 CS=0 CN=0.
     # Linear range: 0 = full input, 127 = full playback.
-    # Requires the evo4_raw kernel module (/dev/evo4).
-    # Falls back to volume/gain approximation if unavailable.
 
     _EU56_WINDEX = 0x3800   # (EntityID=0x38 << 8) | Interface=0
     _EU56_WVALUE = 0x0000   # (CS=0 << 8) | CN=0
@@ -138,35 +179,22 @@ class EVO4Controller:
     def _has_kmod(self) -> bool:
         return os.path.exists("/dev/evo4")
 
-    def _kmod_get_mix(self) -> int:
-        import evo4_kmod
+    def _require_kmod(self):
+        if not self._has_kmod():
+            raise RuntimeError("EVO4 controller requires the evo4_raw kernel module (/dev/evo4)")
+
+    def get_mix(self) -> int:
+        """Get monitor mix ratio (0=input only, 100=playback only)."""
         with evo4_kmod.open_device() as fd:
             data = evo4_kmod.get_cur(fd, wValue=self._EU56_WVALUE,
                                      wIndex=self._EU56_WINDEX, length=2)
             raw = int.from_bytes(data[:2], "little")
-            # 0=full input, 127=full playback → map to 0-100
             return round(raw * 100 / 127)
-
-    def _kmod_set_mix(self, ratio: int):
-        import evo4_kmod
-        with evo4_kmod.open_device() as fd:
-            # 0-100 → 0-127
-            raw = round(ratio * 127 / 100)
-            raw = max(0, min(127, raw))
-            data = raw.to_bytes(2, "little")
-            evo4_kmod.set_cur(fd, wValue=self._EU56_WVALUE,
-                              wIndex=self._EU56_WINDEX, data=data)
-
-    def _require_kmod(self):
-        if not self._has_kmod():
-            raise RuntimeError("Monitor mix requires the evo4_raw kernel module (/dev/evo4)")
-
-    def get_mix(self) -> int:
-        """Get monitor mix ratio (0=input only, 100=playback only)."""
-        self._require_kmod()
-        return self._kmod_get_mix()
 
     def set_mix(self, ratio: int):
         """Set monitor mix ratio (0=input only, 100=playback only)."""
-        self._require_kmod()
-        self._kmod_set_mix(ratio)
+        with evo4_kmod.open_device() as fd:
+            raw = max(0, min(127, round(ratio * 127 / 100)))
+            data = raw.to_bytes(2, "little")
+            evo4_kmod.set_cur(fd, wValue=self._EU56_WVALUE,
+                              wIndex=self._EU56_WINDEX, data=data)

@@ -58,20 +58,22 @@ if __name__ == "__main__":
 
     if args.action in ('get', 'g'):
         if args.parameter == 'volume':
-            volumes = evo.get_volume()
+            debug = evo.get_volume_debug()
             if args.channel is not None:
-                print(f"[GET] Volume ch{args.channel}: {volumes[args.channel - 1]}%")
+                pct, raw, db = debug[args.channel - 1]
+                print(f"[GET] Volume ch{args.channel}: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
             else:
-                for i, v in enumerate(volumes, 1):
-                    print(f"[GET] Volume ch{i}: {v}%")
+                for i, (pct, raw, db) in enumerate(debug, 1):
+                    print(f"[GET] Volume ch{i}: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
 
         elif args.parameter == 'gain':
-            gains = evo.get_gain()
+            debug = evo.get_gain_debug()
             if args.channel is not None:
-                print(f"[GET] Gain ch{args.channel}: {gains[args.channel - 1]}%")
+                pct, raw, db = debug[args.channel - 1]
+                print(f"[GET] Gain ch{args.channel}: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
             else:
-                for i, v in enumerate(gains, 1):
-                    print(f"[GET] Gain ch{i}: {v}%")
+                for i, (pct, raw, db) in enumerate(debug, 1):
+                    print(f"[GET] Gain ch{i}: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
 
         elif args.parameter == 'mute':
             muted = evo.get_mute(args.target)
@@ -83,14 +85,14 @@ if __name__ == "__main__":
 
     elif args.action in ('set', 's'):
         if args.parameter == 'volume':
-            evo.set_volume(args.value, channel=args.channel)
-            print(f"[SET] Volume: {args.value}%"
-                  + (f" ch{args.channel}" if args.channel else ""))
+            raw, db = evo.set_volume(args.value, channel=args.channel)
+            ch_str = f" ch{args.channel}" if args.channel else ""
+            print(f"[SET] Volume: {args.value}%{ch_str}  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
 
         elif args.parameter == 'gain':
-            evo.set_gain(args.value, channel=args.channel)
-            print(f"[SET] Gain: {args.value}%"
-                  + (f" ch{args.channel}" if args.channel else ""))
+            raw, db = evo.set_gain(args.value, channel=args.channel)
+            ch_str = f" ch{args.channel}" if args.channel else ""
+            print(f"[SET] Gain: {args.value}%{ch_str}  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
 
         elif args.parameter == 'mute':
             evo.set_mute(args.target, args.value)
