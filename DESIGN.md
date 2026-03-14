@@ -25,41 +25,41 @@ interfaces, so `snd-usb-audio` continues streaming undisturbed.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                       Userspace                          │
+│                      Userspace                           │
 │                                                          │
-│  ┌──────────┐     ┌──────────────┐     ┌──────────────┐ │
-│  │evoctl.py │────▶│ controller.py│────▶│   kmod.py    │ │
-│  │  (CLI)   │     │(EVO4Controller)    │(ioctl wrapper)│ │
-│  └──────────┘     └──────────────┘     └──────┬───────┘ │
-│                                               │          │
-│                                   ioctl(fd, EVO4_CTRL_TRANSFER, buf)
-│                                               │          │
-├───────────────────────────────────────────────┼──────────┤
-│                       Kernel                  │          │
-│                                               ▼          │
-│                                       ┌──────────────┐   │
-│                                       │  /dev/evo4   │   │
-│                                       │  (misc dev)  │   │
-│                                       └──────┬───────┘   │
+│ ┌──────────┐     ┌────────────────┐     ┌──────────────┐ │
+│ │evoctl.py │────▶│controller.py   │────▶│kmod.py       │ │
+│ │(CLI)     │     │(EVO4Controller)│     │(ioctl wrapper) │
+│ └──────────┘     └────────────────┘     └──────┬───────┘ │
 │                                              │           │
+│                                  ioctl(fd, EVO4_CTRL_TRANSFER, buf)
+│                                              │           │
+├──────────────────────────────────────────────┼───────────┤
+│                      Kernel                  │           │
 │                                              ▼           │
-│                                    ┌───────────────────┐ │
-│                                    │    evo4_raw.ko    │ │
-│  ┌────────────────┐                │ usb_control_msg() │ │
-│  │ snd-usb-audio  │                │ on endpoint 0     │ │
-│  │ (iface 0-2)    │                └─────────┬─────────┘ │
-│  └───────┬────────┘                          │           │
-│          │  claims iface 0-2      claims iface 3 (DFU)   │
-├──────────┼───────────────────────────────────┼───────────┤
-│          ▼              USB Bus              ▼           │
-│  ┌───────────────────────────────────────────────────┐   │
-│  │              Audient EVO4 (USB Device)             │   │
-│  │  Endpoint 0 (Control) ◄── all control transfers   │   │
-│  │  Interface 0 — Audio Control (UAC2 descriptors)   │   │
-│  │  Interface 1 — Audio Streaming (playback)         │   │
-│  │  Interface 2 — Audio Streaming (capture)          │   │
-│  │  Interface 3 — DFU (unused, bound by evo4_raw)    │   │
-│  └───────────────────────────────────────────────────┘   │
+│                                      ┌──────────────┐    │
+│                                      │  /dev/evo4   │    │
+│                                      │  (misc dev)  │    │
+│                                      └──────┬───────┘    │
+│                                             │            │
+│                                             ▼            │
+│                                   ┌───────────────────┐  │
+│                                   │    evo4_raw.ko    │  │
+│ ┌────────────────┐                │ usb_control_msg() │  │
+│ │ snd-usb-audio  │                │ on endpoint 0     │  │
+│ │ (iface 0-2)    │                └─────────┬─────────┘  │
+│ └───────┬────────┘                          │            │
+│         │  claims iface 0-2      claims iface 3 (DFU)    │
+├─────────┼───────────────────────────────────┼────────────┤
+│         ▼              USB Bus              ▼            │
+│ ┌───────────────────────────────────────────────────┐    │
+│ │              Audient EVO4 (USB Device)            │    │
+│ │  Endpoint 0 (Control) ◄── all control transfers   │    │
+│ │  Interface 0 — Audio Control (UAC2 descriptors)   │    │
+│ │  Interface 1 — Audio Streaming (playback)         │    │
+│ │  Interface 2 — Audio Streaming (capture)          │    │
+│ │  Interface 3 — DFU (unused, bound by evo4_raw)    │    │
+│ └───────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────┘
 ```
 
