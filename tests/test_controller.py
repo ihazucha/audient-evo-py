@@ -310,6 +310,60 @@ class TestMute:
             evo.set_mute("nonexistent", True)
 
 
+class TestPhantom:
+    @pytest.mark.parametrize("target", ["input1", "input2"])
+    def test_toggle_phantom(self, evo, target):
+        original = evo.get_phantom(target)
+        new_state = not original
+
+        try:
+            evo.set_phantom(target, new_state)
+            time.sleep(SETTLE_TIME)
+            result = evo.get_phantom(target)
+            assert result == new_state, \
+                f"Phantom {target}: expected {new_state}, got {result}"
+        finally:
+            evo.set_phantom(target, original)
+
+    @pytest.mark.parametrize("target", ["input1", "input2"])
+    def test_phantom_on_off(self, evo, target):
+        """Explicitly test both on and off states."""
+        original = evo.get_phantom(target)
+        try:
+            evo.set_phantom(target, True)
+            time.sleep(SETTLE_TIME)
+            assert evo.get_phantom(target) is True, f"{target} phantom should be on"
+
+            evo.set_phantom(target, False)
+            time.sleep(SETTLE_TIME)
+            assert evo.get_phantom(target) is False, f"{target} phantom should be off"
+        finally:
+            evo.set_phantom(target, original)
+
+    def test_phantom_targets_independent(self, evo):
+        """Setting phantom on one input should not affect the other."""
+        originals = {t: evo.get_phantom(t) for t in ["input1", "input2"]}
+        try:
+            evo.set_phantom("input1", False)
+            evo.set_phantom("input2", False)
+            time.sleep(SETTLE_TIME)
+
+            evo.set_phantom("input1", True)
+            time.sleep(SETTLE_TIME)
+
+            assert evo.get_phantom("input1") is True
+            assert evo.get_phantom("input2") is False
+        finally:
+            for t, val in originals.items():
+                evo.set_phantom(t, val)
+
+    def test_invalid_target(self, evo):
+        with pytest.raises(KeyError):
+            evo.get_phantom("nonexistent")
+        with pytest.raises(KeyError):
+            evo.set_phantom("nonexistent", True)
+
+
 class TestMix:
     def test_set_and_get(self, evo):
         original = evo.get_mix()

@@ -87,6 +87,7 @@ number 0, size 264.
 | Feature Unit 10 | `0x0A00` | Output volume | -127..0 dB | CS=2, 2 channels |
 | Feature Unit 11 | `0x0B00` | Input gain | -8..+50 dB | CS=2, 2 channels |
 | Extension Unit 56 | `0x3800` | Monitor mix | 0..127 | CS=0 CN=0 only |
+| Extension Unit 58 | `0x3A00` | Phantom 48V | 0/1 (4 bytes) | CS=0, per-channel |
 | Extension Unit 58 | `0x3A00` | Input mute | 0/1 (4 bytes) | CS=2, per-channel |
 | Extension Unit 59 | `0x3B00` | Output mute | 0/1 (4 bytes) | CS=1 CN=0 |
 
@@ -106,5 +107,5 @@ Monitor mix is linear: 0 = full input, 127 = full playback.
   USB re-plug. Only use CS=0 CN=0.
 - **CH3-4 internal**: FU10/FU11 report 4 channels but CH3-4 are fixed at
   defaults and ignore SET_CUR.
-- **Unmapped controls**: input select and phantom power are likely on EU58
-  but not yet reverse-engineered. See `dev/FINDINGS.md`.
+- **Unmapped controls**: input select/mode (EU58 CS=5) is writable but its
+  effect is unconfirmed. See `dev/FINDINGS.md`.

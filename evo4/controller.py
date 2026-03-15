@@ -7,10 +7,12 @@ Controls:
   Feature Unit 10: output volume, -127.00..0.00 dB
   Feature Unit 11: input gain, -8.00..+50.00 dB
   Extension Unit 56: monitor mix, 0..127
-  Extension Unit 58/59: mute toggles
+  Extension Unit 58: input mute, phantom power (48V)
+  Extension Unit 59: output mute
 """
 
 import math
+from contextlib import contextmanager
 from os.path import exists
 
 from evo4 import kmod
@@ -50,6 +52,26 @@ def _usb_to_db(raw: int) -> float:
 class EVO4Controller:
     def __init__(self):
         self._require_kmod()
+        self._fd = None
+
+    def __enter__(self):
+        self._fd = kmod.open_device()
+        return self
+
+    def __exit__(self, *exc):
+        if self._fd is not None:
+            self._fd.close()
+            self._fd = None
+        return False
+
+    @contextmanager
+    def _device(self):
+        """Yield the shared fd (context manager mode) or a temporary one."""
+        if self._fd is not None:
+            yield self._fd
+        else:
+            with kmod.open_device() as fd:
+                yield fd
 
     # --- Output Volume (Feature Unit 10) ---
     # Power curve: 50% → -20 dB, matching the EVO4 app's knob response
@@ -66,14 +88,14 @@ class EVO4Controller:
 
     def _get_fu_raw(self, unit: int, cn: int) -> int:
         """Read raw 16-bit USB value from a Feature Unit channel."""
-        with kmod.open_device() as fd:
+        with self._device() as fd:
             data = kmod.get_cur(fd, wValue=(_CS_VOLUME << 8) | cn,
                                      wIndex=unit, length=2)
             return int.from_bytes(data[:2], "little", signed=True)
 
     def _set_fu_raw(self, unit: int, cn: int, raw: int):
         """Write raw 16-bit USB value to a Feature Unit channel."""
-        with kmod.open_device() as fd:
+        with self._device() as fd:
             kmod.set_cur(fd, wValue=(_CS_VOLUME << 8) | cn,
                               wIndex=unit, data=(raw & 0xFFFF).to_bytes(2, "little"))
 
@@ -96,6 +118,17 @@ class EVO4Controller:
         """Set output volume (0-100). channel is 1-based, None = all active.
         Returns (raw, dB) that was sent."""
         db = self._vol_pct_to_db(percent)
+        raw = _db_to_usb(db)
+        if channel is not None:
+            self._set_fu_raw(_FU10, channel, raw)
+        else:
+            for cn in range(1, _NUM_CHANNELS + 1):
+                self._set_fu_raw(_FU10, cn, raw)
+        return (raw if raw <= 0x7FFF else raw - 0x10000, db)
+
+    def set_volume_db(self, db: float, channel: int | None = None) -> tuple[int, float]:
+        """Set output volume in dB (-96..0). Returns (raw, dB) that was sent."""
+        db = max(_VOL_DB_MIN, min(_VOL_DB_MAX, db))
         raw = _db_to_usb(db)
         if channel is not None:
             self._set_fu_raw(_FU10, channel, raw)
@@ -144,6 +177,17 @@ class EVO4Controller:
                 self._set_fu_raw(_FU11, cn, raw)
         return (raw if raw <= 0x7FFF else raw - 0x10000, db)
 
+    def set_gain_db(self, db: float, channel: int | None = None) -> tuple[int, float]:
+        """Set input gain in dB (-8..+50). Returns (raw, dB) that was sent."""
+        db = max(_GAIN_DB_MIN, min(_GAIN_DB_MAX, db))
+        raw = _db_to_usb(db)
+        if channel is not None:
+            self._set_fu_raw(_FU11, channel, raw)
+        else:
+            for cn in range(1, _NUM_CHANNELS + 1):
+                self._set_fu_raw(_FU11, cn, raw)
+        return (raw if raw <= 0x7FFF else raw - 0x10000, db)
+
     # --- Mute (via kmod: Entity 58 for inputs, Entity 59 for output) ---
     # Data: 4 bytes LE, 0x01=muted, 0x00=unmuted
 
@@ -156,15 +200,37 @@ class EVO4Controller:
     def get_mute(self, target: str) -> bool:
         """Get mute state for target (input1, input2, output)."""
         wValue, wIndex = self._MUTE_TARGETS[target]
-        with kmod.open_device() as fd:
+        with self._device() as fd:
             data = kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=4)
             return int.from_bytes(data[:4], "little") == 1
 
     def set_mute(self, target: str, muted: bool):
         """Set mute state for target (input1, input2, output)."""
         wValue, wIndex = self._MUTE_TARGETS[target]
-        with kmod.open_device() as fd:
+        with self._device() as fd:
             data = (1 if muted else 0).to_bytes(4, "little")
+            kmod.set_cur(fd, wValue=wValue, wIndex=wIndex, data=data)
+
+    # --- Phantom Power (Extension Unit 58, CS=0) ---
+    # 4 bytes LE: 0x01=on, 0x00=off. Per-channel (CN=0 for input1, CN=1 for input2).
+
+    _PHANTOM_TARGETS = {
+        "input1": (0x0000, 0x3A00),  # Entity 58, CS=0, CN=0
+        "input2": (0x0001, 0x3A00),  # Entity 58, CS=0, CN=1
+    }
+
+    def get_phantom(self, target: str) -> bool:
+        """Get 48V phantom power state for target (input1, input2)."""
+        wValue, wIndex = self._PHANTOM_TARGETS[target]
+        with self._device() as fd:
+            data = kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=4)
+            return int.from_bytes(data[:4], "little") == 1
+
+    def set_phantom(self, target: str, enabled: bool):
+        """Set 48V phantom power for target (input1, input2)."""
+        wValue, wIndex = self._PHANTOM_TARGETS[target]
+        with self._device() as fd:
+            data = (1 if enabled else 0).to_bytes(4, "little")
             kmod.set_cur(fd, wValue=wValue, wIndex=wIndex, data=data)
 
     # --- Monitor Mix (Extension Unit 56) ---
@@ -179,7 +245,7 @@ class EVO4Controller:
 
     def get_mix(self) -> int:
         """Get monitor mix ratio (0=input only, 100=playback only)."""
-        with kmod.open_device() as fd:
+        with self._device() as fd:
             data = kmod.get_cur(fd, wValue=self._EU56_WVALUE,
                                      wIndex=self._EU56_WINDEX, length=2)
             raw = int.from_bytes(data[:2], "little")
@@ -187,7 +253,7 @@ class EVO4Controller:
 
     def set_mix(self, ratio: int):
         """Set monitor mix ratio (0=input only, 100=playback only)."""
-        with kmod.open_device() as fd:
+        with self._device() as fd:
             raw = max(0, min(127, round(ratio * 127 / 100)))
             data = raw.to_bytes(2, "little")
             kmod.set_cur(fd, wValue=self._EU56_WVALUE,

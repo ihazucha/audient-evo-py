@@ -10,6 +10,7 @@ Replaces the vendor's Windows/macOS-only control app. Coexists with
 - **Input gain** — per-channel, linear
 - **Monitor mix** — input/playback ratio
 - **Mute** — per-input and output
+- **Phantom power** — 48V per-input toggle
 
 ## How It Works
 
@@ -57,6 +58,10 @@ No external dependencies. Run directly from the repo.
 python evoctl.py set volume 75
 python evoctl.py get volume
 
+# Volume in dB (-96..0)
+python evoctl.py set volume -20 --db
+python evoctl.py get volume --db
+
 # Gain (0-100, per-channel with -c)
 python evoctl.py set gain 50 -c 1
 python evoctl.py get gain
@@ -68,9 +73,18 @@ python evoctl.py get mix
 # Mute (requires -t target)
 python evoctl.py set mute on -t output
 python evoctl.py get mute -t input1
+
+# Phantom power 48V (requires -t target)
+python evoctl.py set phantom on -t input1
+python evoctl.py get phantom -t input1
+
+# Show all parameters
+python evoctl.py status
 ```
 
 Targets for mute: `input1`, `input2`, `output`.
+Targets for phantom: `input1`, `input2`.
+Aliases: `g` for `get`, `s` for `set`.
 
 ## Project Structure
 
@@ -93,7 +107,6 @@ dev/
 
 ## TODO
 
-- Phantom power toggle (likely EU58)
 - Proper packaging
 - Figure out how to get the project visible on GitHub
 - Cross-compare with other projects:

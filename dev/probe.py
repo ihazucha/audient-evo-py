@@ -32,7 +32,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-import evo4_kmod
+from evo4 import kmod as evo4_kmod
 
 # Known entities from USB descriptors
 KNOWN_UNITS = {
@@ -78,39 +78,69 @@ def cmd_get(fd, wIndex, cs, cn, length=2):
           f"raw={raw} (0x{raw & 0xFFFF:04X})  bytes={data.hex()}")
 
 
-def cmd_set(fd, wIndex, cs, cn, value):
+def cmd_set(fd, wIndex, cs, cn, value, length=2):
     """Write a value and read it back."""
     wValue = (cs << 8) | cn
 
     # Read current
     try:
-        cur = evo4_kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=2)
-        cur_raw = int.from_bytes(cur[:2], "little", signed=True)
-        print(f"Current: {cur_raw} (0x{cur_raw & 0xFFFF:04X})")
+        cur = evo4_kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=length)
+        cur_raw = int.from_bytes(cur[:length], "little", signed=True)
+        print(f"Current: {cur_raw} (0x{cur_raw & ((1 << length*8) - 1):0{length*2}X})  "
+              f"bytes={cur[:length].hex()}")
     except OSError as e:
         print(f"GET failed: {e}")
 
     # Set new value
-    data = (value & 0xFFFF).to_bytes(2, "little")
+    mask = (1 << length * 8) - 1
+    data = (value & mask).to_bytes(length, "little")
     evo4_kmod.set_cur(fd, wValue=wValue, wIndex=wIndex, data=data)
+    print(f"Sent: bytes={data.hex()}")
 
     # Read back
     try:
-        rb = evo4_kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=2)
-        rb_raw = int.from_bytes(rb[:2], "little", signed=True)
-        print(f"Readback: {rb_raw} (0x{rb_raw & 0xFFFF:04X})")
+        rb = evo4_kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=length)
+        rb_raw = int.from_bytes(rb[:length], "little", signed=True)
+        print(f"Readback: {rb_raw} (0x{rb_raw & mask:0{length*2}X})  "
+              f"bytes={rb[:length].hex()}")
     except OSError as e:
         print(f"Readback failed: {e}")
+
+
+def cmd_scan_set(fd, wIndex_filter=None):
+    """Blind SET_CUR scan — for entities that STALL on GET_CUR (e.g. MU60).
+
+    Writes zero to each CS/CN and checks for STALL vs acceptance.
+    """
+    targets = KNOWN_UNITS.items()
+    if wIndex_filter is not None:
+        targets = [(k, v) for k, v in targets if v[0] == wIndex_filter]
+
+    for name, (wIndex, desc) in targets:
+        print(f"\n=== {name.upper()} — {desc} (wIndex=0x{wIndex:04X}) ===")
+        for cs in range(8):
+            for cn in range(5):
+                wValue = (cs << 8) | cn
+                for length in (2, 4):
+                    data = b'\x00' * length
+                    try:
+                        evo4_kmod.set_cur(fd, wValue=wValue, wIndex=wIndex, data=data)
+                        print(f"  CS={cs} CN={cn} len={length}: ACCEPTED (set zero)")
+                        break
+                    except OSError:
+                        continue
 
 
 def main():
     if len(sys.argv) < 2:
         print("Usage:")
-        print("  probe.py scan                          # discover all entities")
-        print("  probe.py get <wIndex> <cs> <cn> [len]  # read a value")
-        print("  probe.py set <wIndex> <cs> <cn> <val>  # write a value")
+        print("  probe.py scan                                # discover all entities")
+        print("  probe.py scan-set [wIndex]                   # blind SET_CUR scan")
+        print("  probe.py get <wIndex> <cs> <cn> [len]        # read a value")
+        print("  probe.py set <wIndex> <cs> <cn> <val> [len]  # write a value")
         print()
         print("wIndex and val accept hex (0x0A00) or decimal.")
+        print("len defaults to 2; use 4 for Extension Unit controls.")
         print(f"Known units: {', '.join(f'{k}=0x{v[0]:04X}' for k, v in KNOWN_UNITS.items())}")
         sys.exit(1)
 
@@ -119,6 +149,10 @@ def main():
 
         if cmd == "scan":
             cmd_scan(fd)
+
+        elif cmd == "scan-set":
+            wIndex = parse_int(sys.argv[2]) if len(sys.argv) > 2 else None
+            cmd_scan_set(fd, wIndex)
 
         elif cmd == "get":
             wIndex = parse_int(sys.argv[2])
@@ -132,7 +166,8 @@ def main():
             cs = int(sys.argv[3])
             cn = int(sys.argv[4])
             value = parse_int(sys.argv[5])
-            cmd_set(fd, wIndex, cs, cn, value)
+            length = int(sys.argv[6]) if len(sys.argv) > 6 else 2
+            cmd_set(fd, wIndex, cs, cn, value, length)
 
         else:
             print(f"Unknown command: {cmd}")
