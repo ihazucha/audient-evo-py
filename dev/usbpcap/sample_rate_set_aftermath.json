@@ -1,0 +1,186 @@
+[
+  {
+    "_index": "packets-2026-03-18",
+    "_score": null,
+    "_source": {
+      "layers": {
+        "frame": {
+          "frame.section_number": "1",
+          "frame.interface_id": "0",
+          "frame.interface_id_tree": {
+            "frame.interface_name": "\\\\.\\USBPcap2",
+            "frame.interface_description": "USBPcap2"
+          },
+          "frame.encap_type": "152",
+          "frame.time": "2026-03-18T08:41:39.545534000Z",
+          "frame.time_utc": "2026-03-18T08:41:39.545534000Z",
+          "frame.time_epoch": "2026-03-18T08:41:39.545534000Z",
+          "frame.offset_shift": "0.000000000",
+          "frame.time_delta": "0.000204000",
+          "frame.time_delta_displayed": "5.110452000",
+          "frame.time_relative": "15.707472000",
+          "frame.number": "65601",
+          "frame.len": "38",
+          "frame.cap_len": "38",
+          "frame.marked": "0",
+          "frame.ignored": "0",
+          "frame.protocols": "usb:usbaudio",
+          "frame.encoding": "0"
+        },
+        "usb": {
+          "usb.src": "host",
+          "usb.addr": "host",
+          "usb.dst": "2.4.0",
+          "usb.addr": "2.4.0",
+          "usb.usbpcap_header_len": "28",
+          "usb.irp_id": "0xffffb6092c8d37d0",
+          "usb.usbd_status": "0xffffffff",
+          "usb.function": "0x001b",
+          "usb.irp_info": "0x00",
+          "usb.irp_info_tree": {
+            "usb.irp_info.reserved": "0x00",
+            "usb.irp_info.direction": "0x00"
+          },
+          "usb.bus_id": "2",
+          "usb.device_address": "4",
+          "usb.endpoint_address": "0x00",
+          "usb.endpoint_address_tree": {
+            "usb.endpoint_address.direction": "0",
+            "usb.endpoint_address.number": "0"
+          },
+          "usb.transfer_type": "0x02",
+          "usb.data_len": "10",
+          "usb.response_in": "65602",
+          "usb.control_stage": "0",
+          "usb.bInterfaceClass": "0x01"
+        },
+        "Setup Data": {
+          "usb.bmRequestType": "0x21",
+          "usb.bmRequestType_tree": {
+            "usb.bmRequestType.direction": "0",
+            "usb.bmRequestType.type": "0x01",
+            "usb.bmRequestType.recipient": "0x01"
+          },
+          "usbaudio.bRequest": "0x01",
+          "usbaudio.wValue": "0x0201",
+          "usbaudio.wValue_tree": {
+            "usbaudio.wValue.channel_number": "0x0001",
+            "_ws.expert": {
+              "usbaudio.undecoded": "",
+              "_ws.expert.message": "Not dissected yet (report to wireshark.org)",
+              "_ws.expert.severity": "6291456",
+              "_ws.expert.group": "83886080"
+            }
+          },
+          "usbaudio.wIndex": "0x0a00",
+          "usbaudio.wIndex_tree": {
+            "usbaudio.wIndex.interface": "0",
+            "usbaudio.wIndex.entity_id": "10"
+          },
+          "usbaudio.wLength": "2",
+          "Unknown Layout Parameter Block": {
+            "_ws.expert": {
+              "usbaudio.undecoded": "",
+              "_ws.expert.message": "Not dissected yet (report to wireshark.org)",
+              "_ws.expert.severity": "6291456",
+              "_ws.expert.group": "83886080"
+            }
+          },
+          "usb.data_fragment": "80:ea"
+        }
+      }
+    }
+  },
+  {
+    "_index": "packets-2026-03-18",
+    "_score": null,
+    "_source": {
+      "layers": {
+        "frame": {
+          "frame.section_number": "1",
+          "frame.interface_id": "0",
+          "frame.interface_id_tree": {
+            "frame.interface_name": "\\\\.\\USBPcap2",
+            "frame.interface_description": "USBPcap2"
+          },
+          "frame.encap_type": "152",
+          "frame.time": "2026-03-18T08:41:39.545825000Z",
+          "frame.time_utc": "2026-03-18T08:41:39.545825000Z",
+          "frame.time_epoch": "2026-03-18T08:41:39.545825000Z",
+          "frame.offset_shift": "0.000000000",
+          "frame.time_delta": "0.000022000",
+          "frame.time_delta_displayed": "0.000291000",
+          "frame.time_relative": "15.707763000",
+          "frame.number": "65603",
+          "frame.len": "38",
+          "frame.cap_len": "38",
+          "frame.marked": "0",
+          "frame.ignored": "0",
+          "frame.protocols": "usb:usbaudio",
+          "frame.encoding": "0"
+        },
+        "usb": {
+          "usb.src": "host",
+          "usb.addr": "host",
+          "usb.dst": "2.4.0",
+          "usb.addr": "2.4.0",
+          "usb.usbpcap_header_len": "28",
+          "usb.irp_id": "0xffffb6092c8d37d0",
+          "usb.usbd_status": "0xffffffff",
+          "usb.function": "0x001b",
+          "usb.irp_info": "0x00",
+          "usb.irp_info_tree": {
+            "usb.irp_info.reserved": "0x00",
+            "usb.irp_info.direction": "0x00"
+          },
+          "usb.bus_id": "2",
+          "usb.device_address": "4",
+          "usb.endpoint_address": "0x00",
+          "usb.endpoint_address_tree": {
+            "usb.endpoint_address.direction": "0",
+            "usb.endpoint_address.number": "0"
+          },
+          "usb.transfer_type": "0x02",
+          "usb.data_len": "10",
+          "usb.response_in": "65604",
+          "usb.control_stage": "0",
+          "usb.bInterfaceClass": "0x01"
+        },
+        "Setup Data": {
+          "usb.bmRequestType": "0x21",
+          "usb.bmRequestType_tree": {
+            "usb.bmRequestType.direction": "0",
+            "usb.bmRequestType.type": "0x01",
+            "usb.bmRequestType.recipient": "0x01"
+          },
+          "usbaudio.bRequest": "0x01",
+          "usbaudio.wValue": "0x0202",
+          "usbaudio.wValue_tree": {
+            "usbaudio.wValue.channel_number": "0x0002",
+            "_ws.expert": {
+              "usbaudio.undecoded": "",
+              "_ws.expert.message": "Not dissected yet (report to wireshark.org)",
+              "_ws.expert.severity": "6291456",
+              "_ws.expert.group": "83886080"
+            }
+          },
+          "usbaudio.wIndex": "0x0a00",
+          "usbaudio.wIndex_tree": {
+            "usbaudio.wIndex.interface": "0",
+            "usbaudio.wIndex.entity_id": "10"
+          },
+          "usbaudio.wLength": "2",
+          "Unknown Layout Parameter Block": {
+            "_ws.expert": {
+              "usbaudio.undecoded": "",
+              "_ws.expert.message": "Not dissected yet (report to wireshark.org)",
+              "_ws.expert.severity": "6291456",
+              "_ws.expert.group": "83886080"
+            }
+          },
+          "usb.data_fragment": "80:ea"
+        }
+      }
+    }
+  }
+]

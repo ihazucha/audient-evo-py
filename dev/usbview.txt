@@ -1,0 +1,556 @@
+[Port1]  :  Audient EVO4
+
+
+Is Port User Connectable:         yes
+Is Port Debug Capable:            no
+Companion Port Number:            1
+Companion Hub Symbolic Link Name: USB#VID_05E3&PID_0626#6&15f17d69&0&5#{f18a0e88-c30c-11d0-8815-00a0c906bed8}
+Protocols Supported:
+ USB 1.1:                         yes
+ USB 2.0:                         yes
+ USB 3.0:                         no
+
+Device Power State:               PowerDeviceD0
+
+
+       ---===>USB4 Information<===---
+Root hub port is USB4 Capable:     No
+Device is tunneled through USB4:   No
+
+       ---===>Device Information<===---
+English product name: "EVO4"
+
+ConnectionStatus:                  
+Current Config Value:              0x01  -> Device Bus Speed: High (is not SuperSpeed or higher capable)
+Device Address:                    0x04
+Open Pipes:                           4
+
+          ===>Device Descriptor<===
+bLength:                           0x12
+bDescriptorType:                   0x01
+bcdUSB:                          0x0200
+bDeviceClass:                      0xEF  -> This is a Multi-interface Function Code Device
+bDeviceSubClass:                   0x02  -> This is the Common Class Sub Class
+bDeviceProtocol:                   0x01  -> This is the Interface Association Descriptor protocol
+bMaxPacketSize0:                   0x40 = (64) Bytes
+idVendor:                        0x2708 = Audient Limited
+idProduct:                       0x0006
+bcdDevice:                       0x014C
+iManufacturer:                     0x01
+     English (United States)  "Audient"
+iProduct:                          0x03
+     English (United States)  "EVO4"
+iSerialNumber:                     0x00
+bNumConfigurations:                0x02
+*!*CAUTION:    Most host controllers will only work with one configuration per speed
+
+          ---===>Open Pipes<===---
+
+          ===>Endpoint Descriptor<===
+bLength:                           0x07
+bDescriptorType:                   0x05
+bEndpointAddress:                  0x83  -> Direction: IN - EndpointID: 3
+bmAttributes:                      0x03  -> Interrupt Transfer Type
+wMaxPacketSize:                  0x0006 = 1 transactions per microframe, 0x06 max bytes
+bInterval:                         0x08
+
+          ===>Endpoint Descriptor<===
+bLength:                           0x07
+bDescriptorType:                   0x05
+bEndpointAddress:                  0x01  -> Direction: OUT - EndpointID: 1
+bmAttributes:                      0x05  -> Isochronous Transfer Type, Synchronization Type = Asynchronous, Usage Type = Data Endpoint
+wMaxPacketSize:                  0x00D0 = 1 transactions per microframe, 0xD0 max bytes
+bInterval:                         0x01
+
+          ===>Endpoint Descriptor<===
+bLength:                           0x07
+bDescriptorType:                   0x05
+bEndpointAddress:                  0x81  -> Direction: IN - EndpointID: 1
+bmAttributes:                      0x11  -> Isochronous Transfer Type, Synchronization Type = No Synchronization, Usage Type = Feedback Endpoint
+wMaxPacketSize:                  0x0004 = 1 transactions per microframe, 0x04 max bytes
+bInterval:                         0x04
+
+          ===>Endpoint Descriptor<===
+bLength:                           0x07
+bDescriptorType:                   0x05
+bEndpointAddress:                  0x82  -> Direction: IN - EndpointID: 2
+bmAttributes:                      0x05  -> Isochronous Transfer Type, Synchronization Type = Asynchronous, Usage Type = Data Endpoint
+wMaxPacketSize:                  0x00D0 = 1 transactions per microframe, 0xD0 max bytes
+bInterval:                         0x01
+
+       ---===>Full Configuration Descriptor<===---
+
+          ===>Configuration Descriptor<===
+bLength:                           0x09
+bDescriptorType:                   0x02
+wTotalLength:                    0x01D6  -> Validated
+bNumInterfaces:                    0x04
+bConfigurationValue:               0x01
+iConfiguration:                    0x00
+bmAttributes:                      0x80  -> Bus Powered
+MaxPower:                          0xFA = 500 mA
+
+          ===>IAD Descriptor<===
+bLength:                           0x08
+bDescriptorType:                   0x0B
+bFirstInterface:                   0x00
+bInterfaceCount:                   0x03
+bFunctionClass:                    0x01  -> Audio Interface Class
+bFunctionSubClass:                 0x00
+*!*CAUTION:    This appears to be an invalid bFunctionSubClass
+bFunctionProtocol:                 0x20
+iFunction:                         0x00
+
+          ===>Interface Descriptor<===
+bLength:                           0x09
+bDescriptorType:                   0x04
+bInterfaceNumber:                  0x00
+bAlternateSetting:                 0x00
+bNumEndpoints:                     0x01
+bInterfaceClass:                   0x01  -> Audio Interface Class
+bInterfaceSubClass:                0x01  -> Audio Control Interface SubClass
+bInterfaceProtocol:                0x20
+*!*WARNING:  must be set to PC_PROTOCOL_UNDEFINED 0 for this class
+iInterface:                        0x03
+     English (United States)  "EVO4"
+
+          ===>Audio Control Interface Header Descriptor<===
+bLength:                           0x09
+bDescriptorType:                   0x24 (CS_INTERFACE)
+bDescriptorSubtype:                0x01 (HEADER)
+bcdADC:                          0x0200
+wTotalLength:                    0x0008
+bInCollection:                     0x01
+baInterfaceNr[1]:                  0x01
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x08
+bDescriptorType:                   0x24
+08 24 0A 29 03 07 00 09 
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x08
+bDescriptorType:                   0x24
+08 24 0B 28 01 29 03 08 
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x11
+bDescriptorType:                   0x24
+11 24 02 02 01 01 00 28 04 00 00 00 00 0B 00 00 
+06 
+
+          ===>Audio Control Feature Unit Descriptor<===
+bLength:                           0x1A
+bDescriptorType:                   0x24 (CS_INTERFACE)
+bDescriptorSubtype:                0x06 (FEATURE_UNIT)
+bUnitID:                           0x0A
+bSourceID:                         0x02
+bControlSize:                      0x00
+Audio controls are not available (bControlSize = 0)
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x0C
+bDescriptorType:                   0x24
+0C 24 03 14 01 03 00 3B 28 00 00 00 
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x10
+bDescriptorType:                   0x24
+10 24 09 3B 00 00 01 38 02 00 00 00 00 00 3F 00 
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x11
+bDescriptorType:                   0x24
+11 24 02 01 01 02 00 28 04 00 00 00 00 0F 00 00 
+00 
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x10
+bDescriptorType:                   0x24
+10 24 09 3A 00 00 01 01 02 00 00 00 00 00 FF 00 
+
+          ===>Audio Control Feature Unit Descriptor<===
+bLength:                           0x1A
+bDescriptorType:                   0x24 (CS_INTERFACE)
+bDescriptorSubtype:                0x06 (FEATURE_UNIT)
+bUnitID:                           0x0B
+bSourceID:                         0x01
+bControlSize:                      0x00
+Audio controls are not available (bControlSize = 0)
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x0C
+bDescriptorType:                   0x24
+0C 24 03 16 01 01 00 3C 28 00 00 07 
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x11
+bDescriptorType:                   0x24
+11 24 09 32 00 00 02 0B 0A 06 00 00 00 00 00 03 
+00 
+
+          ===>Audio Control Mixer Unit Descriptor<===
+bLength:                           0x10
+bDescriptorType:                   0x24 (CS_INTERFACE)
+bDescriptorSubtype:                0x04 (MIXER_UNIT)
+bUnitID:                           0x3C
+bNrInPins:                         0x01
+baSourceID[1]:                     0x32
+bNrChannels:                       0x02
+wChannelConfig:                  0x0000
+iChannelNames:                     0x00
+bmControls:
+00 13 FF FF 00 
+iMixer:                            0x00
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x11
+bDescriptorType:                   0x24
+11 24 09 38 00 00 02 0B 0A 02 00 00 00 00 00 00 
+00 
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x10
+bDescriptorType:                   0x24
+10 24 09 39 00 00 01 02 00 00 00 00 00 00 00 00 
+
+          ===>Endpoint Descriptor<===
+bLength:                           0x07
+bDescriptorType:                   0x05
+bEndpointAddress:                  0x83  -> Direction: IN - EndpointID: 3
+bmAttributes:                      0x03  -> Interrupt Transfer Type
+wMaxPacketSize:                  0x0006 = 1 transactions per microframe, 0x06 max bytes
+bInterval:                         0x08
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x10
+bDescriptorType:                   0x24
+10 24 09 3E 00 00 01 01 01 00 00 00 00 00 00 00 
+
+          ===>Interface Descriptor<===
+bLength:                           0x09
+bDescriptorType:                   0x04
+bInterfaceNumber:                  0x01
+bAlternateSetting:                 0x00
+bNumEndpoints:                     0x00
+bInterfaceClass:                   0x01  -> Audio Interface Class
+bInterfaceSubClass:                0x02  -> Audio Streaming Interface SubClass
+bInterfaceProtocol:                0x20
+*!*WARNING:  must be set to PC_PROTOCOL_UNDEFINED 0 for this class
+iInterface:                        0x04
+     English (United States)  "EVO4 "
+
+          ===>Interface Descriptor<===
+bLength:                           0x09
+bDescriptorType:                   0x04
+bInterfaceNumber:                  0x01
+bAlternateSetting:                 0x01
+bNumEndpoints:                     0x02
+bInterfaceClass:                   0x01  -> Audio Interface Class
+bInterfaceSubClass:                0x02  -> Audio Streaming Interface SubClass
+bInterfaceProtocol:                0x20
+*!*WARNING:  must be set to PC_PROTOCOL_UNDEFINED 0 for this class
+iInterface:                        0x04
+     English (United States)  "EVO4 "
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x10
+bDescriptorType:                   0x24
+10 24 01 02 00 01 01 00 00 00 04 00 00 00 00 0B 
+
+          ===>Audio Streaming Format Type Descriptor<===
+bLength:                           0x06
+bDescriptorType:                   0x24 (CS_INTERFACE)
+bDescriptorSubtype:                0x02 (FORMAT_TYPE)
+bFormatType:                       0x01 (FORMAT_TYPE_I)
+bNrChannels:                       0x04
+bSubframeSize:                     0x18
+bBitResolution:                    0x07 (7)
+bSamFreqType:                      0x05 (Discrete)
+tSamFreq[1]:                   0xD00501 (13632769 Hz)
+tSamFreq[2]:                   0x080100 (524544 Hz)
+tSamFreq[3]:                   0x000125 (293 Hz)
+tSamFreq[4]:                   0x080200 (524800 Hz)
+tSamFreq[5]:                   0x050700 (329472 Hz)
+
+          ===>Endpoint Descriptor<===
+bLength:                           0x07
+bDescriptorType:                   0x05
+bEndpointAddress:                  0x01  -> Direction: OUT - EndpointID: 1
+bmAttributes:                      0x05  -> Isochronous Transfer Type, Synchronization Type = Asynchronous, Usage Type = Data Endpoint
+wMaxPacketSize:                  0x00D0 = 1 transactions per microframe, 0xD0 max bytes
+bInterval:                         0x01
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x08
+bDescriptorType:                   0x25
+08 25 01 00 00 02 08 00 
+
+          ===>Endpoint Descriptor<===
+bLength:                           0x07
+bDescriptorType:                   0x05
+bEndpointAddress:                  0x81  -> Direction: IN - EndpointID: 1
+bmAttributes:                      0x11  -> Isochronous Transfer Type, Synchronization Type = No Synchronization, Usage Type = Feedback Endpoint
+wMaxPacketSize:                  0x0004 = 1 transactions per microframe, 0x04 max bytes
+bInterval:                         0x04
+
+          ===>Interface Descriptor<===
+bLength:                           0x09
+bDescriptorType:                   0x04
+bInterfaceNumber:                  0x01
+bAlternateSetting:                 0x02
+bNumEndpoints:                     0x02
+bInterfaceClass:                   0x01  -> Audio Interface Class
+bInterfaceSubClass:                0x02  -> Audio Streaming Interface SubClass
+bInterfaceProtocol:                0x20
+*!*WARNING:  must be set to PC_PROTOCOL_UNDEFINED 0 for this class
+iInterface:                        0x04
+     English (United States)  "EVO4 "
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x10
+bDescriptorType:                   0x24
+10 24 01 02 00 01 01 00 00 00 04 00 00 00 00 0B 
+
+          ===>Audio Streaming Format Type Descriptor<===
+bLength:                           0x06
+bDescriptorType:                   0x24 (CS_INTERFACE)
+bDescriptorSubtype:                0x02 (FORMAT_TYPE)
+bFormatType:                       0x01 (FORMAT_TYPE_I)
+bNrChannels:                       0x02
+bSubframeSize:                     0x10
+bBitResolution:                    0x07 (7)
+bSamFreqType:                      0x05 (Discrete)
+tSamFreq[1]:                   0x680501 (6817025 Hz)
+tSamFreq[2]:                   0x080100 (524544 Hz)
+tSamFreq[3]:                   0x000125 (293 Hz)
+tSamFreq[4]:                   0x080200 (524800 Hz)
+tSamFreq[5]:                   0x050700 (329472 Hz)
+
+          ===>Endpoint Descriptor<===
+bLength:                           0x07
+bDescriptorType:                   0x05
+bEndpointAddress:                  0x01  -> Direction: OUT - EndpointID: 1
+bmAttributes:                      0x05  -> Isochronous Transfer Type, Synchronization Type = Asynchronous, Usage Type = Data Endpoint
+wMaxPacketSize:                  0x0068 = 1 transactions per microframe, 0x68 max bytes
+bInterval:                         0x01
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x08
+bDescriptorType:                   0x25
+08 25 01 00 00 02 08 00 
+
+          ===>Endpoint Descriptor<===
+bLength:                           0x07
+bDescriptorType:                   0x05
+bEndpointAddress:                  0x81  -> Direction: IN - EndpointID: 1
+bmAttributes:                      0x11  -> Isochronous Transfer Type, Synchronization Type = No Synchronization, Usage Type = Feedback Endpoint
+wMaxPacketSize:                  0x0004 = 1 transactions per microframe, 0x04 max bytes
+bInterval:                         0x04
+
+          ===>Interface Descriptor<===
+bLength:                           0x09
+bDescriptorType:                   0x04
+bInterfaceNumber:                  0x02
+bAlternateSetting:                 0x00
+bNumEndpoints:                     0x00
+bInterfaceClass:                   0x01  -> Audio Interface Class
+bInterfaceSubClass:                0x02  -> Audio Streaming Interface SubClass
+bInterfaceProtocol:                0x20
+*!*WARNING:  must be set to PC_PROTOCOL_UNDEFINED 0 for this class
+iInterface:                        0x05
+     English (United States)  "EVO4 "
+
+          ===>Interface Descriptor<===
+bLength:                           0x09
+bDescriptorType:                   0x04
+bInterfaceNumber:                  0x02
+bAlternateSetting:                 0x01
+bNumEndpoints:                     0x01
+bInterfaceClass:                   0x01  -> Audio Interface Class
+bInterfaceSubClass:                0x02  -> Audio Streaming Interface SubClass
+bInterfaceProtocol:                0x20
+*!*WARNING:  must be set to PC_PROTOCOL_UNDEFINED 0 for this class
+iInterface:                        0x05
+     English (United States)  "EVO4 "
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x10
+bDescriptorType:                   0x24
+10 24 01 16 00 01 01 00 00 00 04 00 00 00 00 0F 
+
+          ===>Audio Streaming Format Type Descriptor<===
+bLength:                           0x06
+bDescriptorType:                   0x24 (CS_INTERFACE)
+bDescriptorSubtype:                0x02 (FORMAT_TYPE)
+bFormatType:                       0x01 (FORMAT_TYPE_I)
+bNrChannels:                       0x04
+bSubframeSize:                     0x18
+bBitResolution:                    0x07 (7)
+bSamFreqType:                      0x05 (Discrete)
+tSamFreq[1]:                   0xD00582 (13632898 Hz)
+tSamFreq[2]:                   0x080100 (524544 Hz)
+tSamFreq[3]:                   0x000125 (293 Hz)
+tSamFreq[4]:                   0x080200 (524800 Hz)
+tSamFreq[5]:                   0x040900 (264448 Hz)
+
+          ===>Endpoint Descriptor<===
+bLength:                           0x07
+bDescriptorType:                   0x05
+bEndpointAddress:                  0x82  -> Direction: IN - EndpointID: 2
+bmAttributes:                      0x05  -> Isochronous Transfer Type, Synchronization Type = Asynchronous, Usage Type = Data Endpoint
+wMaxPacketSize:                  0x00D0 = 1 transactions per microframe, 0xD0 max bytes
+bInterval:                         0x01
+
+          ===>Descriptor Hex Dump<===
+bLength:                           0x08
+bDescriptorType:                   0x25
+08 25 01 00 00 02 08 00 
+
+          ===>Interface Descriptor<===
+bLength:                           0x09
+bDescriptorType:                   0x04
+bInterfaceNumber:                  0x03
+bAlternateSetting:                 0x00
+bNumEndpoints:                     0x00
+bInterfaceClass:                   0xFE  -> This is an Application Specific USB Device Interface Class
+  -> This is a Device Firmware Application Specific USB Device Interface Class
+bInterfaceSubClass:                0x01
+bInterfaceProtocol:                0x01
+iInterface:                        0x0A
+     English (United States)  "Audient DFU"
+
+          ===>HID Descriptor<===
+bLength:                           0x09
+bDescriptorType:                   0x21
+bcdHID:                          0xFA07
+bCountryCode:                      0x00
+bNumDescriptors:                   0x40
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0110
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0000
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0000
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0000
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0000
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0000
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0000
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0000
+bDescriptorType:                   0x00
+wDescriptorLength:               0x3584
+bDescriptorType:                   0x5A
+wDescriptorLength:               0x5C2A
+bDescriptorType:                   0xB7
+wDescriptorLength:               0x1401
+bDescriptorType:                   0x53
+wDescriptorLength:               0x5700
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0044
+bDescriptorType:                   0x5C
+wDescriptorLength:               0x4400
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0052
+bDescriptorType:                   0x49
+wDescriptorLength:               0x5600
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0045
+bDescriptorType:                   0x52
+wDescriptorLength:               0x4500
+bDescriptorType:                   0x00
+wDescriptorLength:               0x004E
+bDescriptorType:                   0x55
+wDescriptorLength:               0x4D00
+bDescriptorType:                   0x00
+wDescriptorLength:               0x005C
+bDescriptorType:                   0x7B
+wDescriptorLength:               0x4300
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0033
+bDescriptorType:                   0x41
+wDescriptorLength:               0x3600
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0033
+bDescriptorType:                   0x45
+wDescriptorLength:               0x4400
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0044
+bDescriptorType:                   0x2D
+wDescriptorLength:               0x3200
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0044
+bDescriptorType:                   0x32
+wDescriptorLength:               0x3700
+bDescriptorType:                   0x00
+wDescriptorLength:               0x002D
+bDescriptorType:                   0x34
+wDescriptorLength:               0x4200
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0036
+bDescriptorType:                   0x36
+wDescriptorLength:               0x2D00
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0042
+bDescriptorType:                   0x31
+wDescriptorLength:               0x3500
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0035
+bDescriptorType:                   0x2D
+wDescriptorLength:               0x3500
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0045
+bDescriptorType:                   0x39
+wDescriptorLength:               0x3400
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0042
+bDescriptorType:                   0x34
+wDescriptorLength:               0x3300
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0044
+bDescriptorType:                   0x39
+wDescriptorLength:               0x3200
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0036
+bDescriptorType:                   0x41
+wDescriptorLength:               0x7D00
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0023
+bDescriptorType:                   0x52
+wDescriptorLength:               0x4500
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0041
+bDescriptorType:                   0x4C
+wDescriptorLength:               0x5400
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0045
+bDescriptorType:                   0x4B
+wDescriptorLength:               0x5300
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0052
+bDescriptorType:                   0x56
+wDescriptorLength:               0x2600
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0036
+bDescriptorType:                   0x26
+wDescriptorLength:               0x3300
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0039
+bDescriptorType:                   0x42
+wDescriptorLength:               0x3700
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0046
+bDescriptorType:                   0x41
+wDescriptorLength:               0x3200
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0045
+bDescriptorType:                   0x26
+wDescriptorLength:               0x3000
+bDescriptorType:                   0x00
+wDescriptorLength:               0x0000
+bDescriptorType:                   0x69
+wDescriptorLength:               0x0002
