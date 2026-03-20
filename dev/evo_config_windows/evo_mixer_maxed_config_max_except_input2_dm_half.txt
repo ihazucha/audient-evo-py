@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<presets>
+  <preset company="audient ltd" product="evo 4" schema-version="0.1.0"
+          software-version="4.3.18" name="evo_mixer_maxed_config_max_except_input2_dm_half">
+    <device>
+      <blend-mixer blend="62" monitor-pan="50"/>
+      <mixer>
+        <input channel="0" name="MIC 1">
+          <mix index="0" volume="6.00" pan="0.50"/>
+        </input>
+        <input channel="1" name="MIC 2">
+          <mix index="0" volume="6.00" pan="0.50"/>
+        </input>
+        <input channel="2" name="MAIN OUTPUT 1|2">
+          <mix index="0" volume="6.00" pan="0.00"/>
+        </input>
+        <input channel="3" name="MAIN OUT 2">
+          <mix index="0" volume="6.00" pan="1.00"/>
+        </input>
+        <input channel="4" name="LOOP-BACK 1|2">
+          <mix index="0" volume="6.00" pan="0.00"/>
+        </input>
+        <input channel="5" name="LOOP-BACK 2">
+          <mix index="0" volume="6.00" pan="1.00"/>
+        </input>
+      </mixer>
+      <inputs>
+        <input index="0" phantom="0" gain="12800" mute="0" link="0"/>
+        <input index="1" phantom="0" gain="-2048" mute="0" link="0"/>
+      </inputs>
+      <routing>
+        <loop-back/>
+      </routing>
+      <driver-settings sample-rate="96000"/>
+    </device>
+  </preset>
+</presets>
