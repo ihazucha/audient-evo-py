@@ -90,6 +90,7 @@ number 0, size 264.
 | Extension Unit 58 | `0x3A00` | Phantom 48V | 0/1 (4 bytes) | CS=0, per-channel |
 | Extension Unit 58 | `0x3A00` | Input mute | 0/1 (4 bytes) | CS=2, per-channel |
 | Extension Unit 59 | `0x3B00` | Output mute | 0/1 (4 bytes) | CS=1 CN=0 |
+| Mixer Unit 60 | `0x3C00` | Loopback mixer (6×2) | -128..+8 dB | CS=1, CN=0-11, write-only |
 
 Volume/gain use UAC2 16-bit signed values in 1/256 dB steps.
 Monitor mix is linear: 0 = full input, 127 = full playback.

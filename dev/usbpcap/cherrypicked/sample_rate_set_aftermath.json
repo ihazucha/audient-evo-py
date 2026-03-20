@@ -1,0 +1,32 @@
+[
+  {
+    "frame_number": "65601",
+    "frame_time": "2026-03-18T08:41:39.545534000Z",
+    "direction": "device\u2192host",
+    "transfer_type": "0x02",
+    "bmRequestType": "0x21",
+    "bRequest": "0x01",
+    "wValue": "0x0201",
+    "wValue_channel": "0x0001",
+    "wIndex": "0x0a00",
+    "wIndex_interface": "0",
+    "wIndex_entity_id": "10",
+    "wLength": "2",
+    "data_fragment": "80:ea"
+  },
+  {
+    "frame_number": "65603",
+    "frame_time": "2026-03-18T08:41:39.545825000Z",
+    "direction": "device\u2192host",
+    "transfer_type": "0x02",
+    "bmRequestType": "0x21",
+    "bRequest": "0x01",
+    "wValue": "0x0202",
+    "wValue_channel": "0x0002",
+    "wIndex": "0x0a00",
+    "wIndex_interface": "0",
+    "wIndex_entity_id": "10",
+    "wLength": "2",
+    "data_fragment": "80:ea"
+  }
+]

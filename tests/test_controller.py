@@ -6,7 +6,7 @@ Each test saves the current value, sets a new value, verifies it, then restores.
 import time
 import pytest
 
-from evo4.controller import EVO4Controller, _db_to_usb, _usb_to_db
+from evo4.controller import EVO4Controller, _db_to_usb, _usb_to_db, _MIXER_DB_MIN, _MIXER_MAX_CN
 
 
 @pytest.fixture(scope="module")
@@ -404,3 +404,92 @@ class TestMix:
         result = evo.get_mix()
         assert isinstance(result, int)
         assert 0 <= result <= 100
+
+
+# --- Pan law unit tests (no hardware) ---
+
+class TestPanLaw:
+    def test_center_minus_3db(self):
+        """At center pan, both channels should be volume - 3.01 dB."""
+        for vol in [0.0, -6.0, -20.0, -60.0]:
+            l, r = EVO4Controller._pan_to_lr_db(vol, 0.0)
+            assert l == pytest.approx(vol - 3.0103, abs=0.01), f"Left at center, vol={vol}"
+            assert r == pytest.approx(vol - 3.0103, abs=0.01), f"Right at center, vol={vol}"
+
+    def test_full_left(self):
+        """Full left: left = volume, right = -128 dB (silence)."""
+        l, r = EVO4Controller._pan_to_lr_db(0.0, -100.0)
+        assert l == pytest.approx(0.0, abs=0.01)
+        assert r == _MIXER_DB_MIN
+
+    def test_full_right(self):
+        """Full right: left = -128 dB (silence), right = volume."""
+        l, r = EVO4Controller._pan_to_lr_db(0.0, 100.0)
+        assert l == _MIXER_DB_MIN
+        assert r == pytest.approx(0.0, abs=0.01)
+
+    def test_monotonic(self):
+        """As pan goes left to right, left decreases and right increases."""
+        pans = list(range(-100, 101, 5))
+        lefts = []
+        rights = []
+        for p in pans:
+            l, r = EVO4Controller._pan_to_lr_db(0.0, float(p))
+            lefts.append(l)
+            rights.append(r)
+        for i in range(1, len(lefts)):
+            assert lefts[i] <= lefts[i - 1] + 0.001, f"Left not monotonic at pan={pans[i]}"
+            assert rights[i] >= rights[i - 1] - 0.001, f"Right not monotonic at pan={pans[i]}"
+
+    def test_symmetric(self):
+        """Pan law should be symmetric: L at pan=+X equals R at pan=-X."""
+        for p in [25.0, 50.0, 75.0]:
+            l_pos, r_pos = EVO4Controller._pan_to_lr_db(0.0, p)
+            l_neg, r_neg = EVO4Controller._pan_to_lr_db(0.0, -p)
+            assert l_pos == pytest.approx(r_neg, abs=0.01)
+            assert r_pos == pytest.approx(l_neg, abs=0.01)
+
+    def test_clamps_to_range(self):
+        """Volume near silence should clamp to _MIXER_DB_MIN."""
+        l, r = EVO4Controller._pan_to_lr_db(_MIXER_DB_MIN, 0.0)
+        assert l == _MIXER_DB_MIN
+        assert r == _MIXER_DB_MIN
+
+
+# --- Mixer integration tests (hardware) ---
+
+class TestMixer:
+    def test_set_crosspoint(self, evo):
+        """Set CN=0 to 0 dB — should not error."""
+        evo.set_mixer_crosspoint(0, 0.0)
+
+    def test_get_crosspoint_stall(self, evo):
+        """GET_CUR on MU60 is expected to STALL (write-only)."""
+        try:
+            db = evo.get_mixer_crosspoint(0)
+            # If it succeeds, that's fine too
+            assert isinstance(db, float)
+        except OSError:
+            pass  # expected STALL
+
+    def test_set_mixer_input(self, evo):
+        """Set input1 to 0 dB center — should not error."""
+        evo.set_mixer_input(1, 0.0, 0.0)
+
+    def test_set_mixer_output(self, evo):
+        """Set output to 0 dB with default pans — should not error."""
+        evo.set_mixer_output(0.0)
+
+    def test_set_mixer_loopback(self, evo):
+        """Set loopback to -6 dB with default pans — should not error."""
+        evo.set_mixer_loopback(-6.0)
+
+    def test_crosspoint_invalid_cn(self, evo):
+        with pytest.raises(ValueError):
+            evo.set_mixer_crosspoint(_MIXER_MAX_CN, 0.0)
+        with pytest.raises(ValueError):
+            evo.set_mixer_crosspoint(-1, 0.0)
+
+    def test_input_invalid_num(self, evo):
+        with pytest.raises(ValueError):
+            evo.set_mixer_input(3, 0.0)

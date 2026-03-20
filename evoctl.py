@@ -33,9 +33,40 @@ def parse_args():
 
     subparsers.add_parser('status', help='Show all device parameters.')
 
+    # --- mixer subcommand ---
+    mixer_parser = subparsers.add_parser('mixer', aliases=['m'],
+                                         help='Control MU60 mixer matrix.')
+    mixer_sub = mixer_parser.add_subparsers(dest='mixer_section', required=True)
+
+    # mixer input1 / input2
+    for inp in ('input1', 'input2'):
+        inp_p = mixer_sub.add_parser(inp, help=f'Set {inp} level in output mix.')
+        inp_p.add_argument('--volume', type=float, required=True,
+                           help='Volume in dB (-128..+8). Use -128 to mute.')
+        inp_p.add_argument('--pan', type=float, default=0.0,
+                           help='Pan: -100 (left) to +100 (right). Default: 0 (center).')
+
+    # mixer output
+    out_p = mixer_sub.add_parser('output', help='Set DAW playback level in main output mix.')
+    out_p.add_argument('--volume', type=float, required=True,
+                       help='Volume in dB (-128..+8). Use -128 to mute.')
+    out_p.add_argument('--pan-l', type=float, default=-100.0,
+                       help='Pan for DAW L channel (-100..+100). Default: -100 (left).')
+    out_p.add_argument('--pan-r', type=float, default=100.0,
+                       help='Pan for DAW R channel (-100..+100). Default: +100 (right).')
+
+    # mixer loopback
+    loop_p = mixer_sub.add_parser('loopback', help='Set DAW playback level in loopback capture mix.')
+    loop_p.add_argument('--volume', type=float, required=True,
+                        help='Volume in dB (-128..+8). Use -128 to mute.')
+    loop_p.add_argument('--pan-l', type=float, default=-100.0,
+                        help='Pan for DAW L channel (-100..+100). Default: -100 (left).')
+    loop_p.add_argument('--pan-r', type=float, default=100.0,
+                        help='Pan for DAW R channel (-100..+100). Default: +100 (right).')
+
     args = parser.parse_args()
 
-    if args.action == 'status':
+    if args.action in ('status', 'mixer', 'm'):
         return args
 
     if args.action in ('set', 's'):
@@ -164,6 +195,21 @@ def _run(args, evo):
                 print(f"WARNING: 48V phantom power will be applied to {args.target}.")
             evo.set_phantom(args.target, args.value)
             print(f"[SET] Phantom 48V {args.target}: {'on' if args.value else 'off'}")
+
+    elif args.action in ('mixer', 'm'):
+        sec = args.mixer_section
+        if sec in ('input1', 'input2'):
+            num = int(sec[-1])
+            evo.set_mixer_input(num, args.volume, args.pan)
+            print(f"[SET] Mixer {sec}: volume={args.volume:+.1f} dB, pan={args.pan:+.0f}")
+        elif sec == 'output':
+            evo.set_mixer_output(args.volume, args.pan_l, args.pan_r)
+            print(f"[SET] Mixer output: volume={args.volume:+.1f} dB, "
+                  f"pan_l={args.pan_l:+.0f}, pan_r={args.pan_r:+.0f}")
+        elif sec == 'loopback':
+            evo.set_mixer_loopback(args.volume, args.pan_l, args.pan_r)
+            print(f"[SET] Mixer loopback: volume={args.volume:+.1f} dB, "
+                  f"pan_l={args.pan_l:+.0f}, pan_r={args.pan_r:+.0f}")
 
     elif args.action == 'status':
         with evo:

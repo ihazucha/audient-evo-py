@@ -124,14 +124,50 @@ toggled. Likely a static capability bitfield.
 vijay-prema's headphone volume writes to EU59 CS=0 but it's the same underlying
 register as FU10. The `0xFFFF` padding in bytes 3-4 is the EU data format.
 
-### MU60 — Mixer Unit (wIndex=0x3C00) — WRITE-ONLY
+### MU60 — Mixer Unit (wIndex=0x3C00) — DECODED
 
-All GET_CUR STALLed. Blind SET_CUR **accepted** on all tested positions
-(CS=0-3, CN=0-4, 2-byte payloads).
+Single 6-input × 2-output **loopback-only** mixer. All 12 cross-points
+route into the loopback bus (USB capture CH3/4). This mixer does NOT control
+headphone/main output — that is handled by EU56 (monitor mix) + FU10 (volume).
 
-Functionality uncertain — may be a write-only transfer matrix (matching
-soerenbnoergaard's evoctl for EVO8), or may accept writes silently without
-effect. The simpler EU56 CS=0 slider is the confirmed monitor mix path.
+Write-only (all GET_CUR STALL). Uses CS=1 (Mixer Control, UAC2 standard),
+2-byte signed Q8.8 dB values (1/256 dB steps). Range: -128 dB (0x8000,
+silence) to +8 dB (0x0800).
+
+Cross-point addressing follows UAC2: `CN = output_index + input_index * num_outputs`.
+
+**Full matrix** (6 inputs × 2 outputs, CN 0-11):
+
+| CN | Source          | Destination | input_idx | out_idx |
+|----|-----------------|-------------|-----------|---------|
+| 0  | Input 1         | Loopback L  | 0         | 0       |
+| 1  | Input 1         | Loopback R  | 0         | 1       |
+| 2  | Input 2         | Loopback L  | 1         | 0       |
+| 3  | Input 2         | Loopback R  | 1         | 1       |
+| 4  | DAW L (Main)    | Loopback L  | 2         | 0       |
+| 5  | DAW L (Main)    | Loopback R  | 2         | 1       |
+| 6  | DAW R (Main)    | Loopback L  | 3         | 0       |
+| 7  | DAW R (Main)    | Loopback R  | 3         | 1       |
+| 8  | LoopOut L (CH3) | Loopback L  | 4         | 0       |
+| 9  | LoopOut L (CH3) | Loopback R  | 4         | 1       |
+| 10 | LoopOut R (CH4) | Loopback L  | 5         | 0       |
+| 11 | LoopOut R (CH4) | Loopback R  | 5         | 1       |
+
+**Inputs 0-1** (Input 1/2): mic/line preamp signals after FU11 gain.
+**Inputs 2-3** (DAW L/R): USB playback CH1/2 — the main stereo output.
+**Inputs 4-5** (LoopOut L/R): USB playback CH3/4 — a second stereo playback
+stream that only appears in the loopback mix (not in the headphone output).
+On Linux, this requires a PipeWire loopback module to expose as a separate
+sink (see `dev/linux-audio/evo4-stereo.conf`).
+
+Default state (from USB captures): diagonal cross-points active (CN 0,3,4,7,8,11),
+cross pairs muted at -128 dB (CN 1,2,5,6,9,10). Volume and pan sweeps change
+proportional cross-point pairs as expected.
+
+Cross-referenced with soerenbnoergaard/evoctl (EVO8): same protocol
+(wIndex=0x3C00, CS=1, 2-byte Q8.8 dB), same write-only behavior, no pan law
+in hardware. EVO8 uses a larger matrix (10×4=40 cross-points) but same
+addressing formula.
 
 ## Protocol Summary
 
@@ -143,6 +179,7 @@ effect. The simpler EU56 CS=0 slider is the confirmed monitor mix path.
 | Input Mute | EU58 | CS=2, CN=0-1 | 0x3A00 | 4B LE boolean | CONFIRMED |
 | Output Mute | EU59 | CS=1, CN=0 | 0x3B00 | 4B LE boolean | CONFIRMED |
 | Phantom 48V | EU58 | CS=0, CN=0-1 | 0x3A00 | 4B LE boolean | CONFIRMED |
+| Mixer Matrix | MU60 | CS=1, CN=0-11 | 0x3C00 | 2B signed (1/256 dB) | CONFIRMED (write-only) |
 | Input Mode? | EU58 | CS=5, CN=0-1 | 0x3A00 | 4B LE | UNCONFIRMED |
 | Volume (alias) | EU59 | CS=0, CN=0-1 | 0x3B00 | 4B (=FU10 mirror) | read-only mirror |
 
@@ -178,4 +215,4 @@ effect. The simpler EU56 CS=0 slider is the confirmed monitor mix path.
 | Output Mute | EU59 CS=1 | - | - | - | EU54 |
 | Phantom 48V | EU58 CS=0 | EU58 CS=0 | EU58 CS=0 | - | - |
 | HP Volume | N/A (=FU10) | EU59 CS=0 (=FU10) | - | - | FU10 CH3-4 |
-| Transfer Matrix | MU60 (write-only) | - | MU60 | MU60 | EU60 routing |
+| Mixer Matrix | MU60 CS=1 (decoded) | - | MU60 | MU60 (matrix) | EU60 routing |

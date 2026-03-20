@@ -124,22 +124,22 @@ get_node_id() {
     wpctl status 2>/dev/null | grep -m1 "$1" | grep -oP '\d+(?=\.)' | head -1
 }
 
-SINK_ID=$(get_node_id "evo4_stereo_output")
-SOURCE_ID=$(get_node_id "evo4_stereo_mic")
+SINK_ID=$(get_node_id "alsa_output.usb-Audient_EVO4-00")
+SOURCE_ID=$(get_node_id "evo4_mic")
 
 if [[ -n "${SINK_ID:-}" ]]; then
     wpctl set-default "$SINK_ID"
-    ok "Default sink: evo4_stereo_output (id=$SINK_ID)"
+    ok "Default sink: EVO4 Main Output (id=$SINK_ID)"
 else
-    warn "Could not find evo4_stereo_output — is the EVO4 connected?"
+    warn "Could not find EVO4 ALSA output — is the EVO4 connected?"
     warn "Run 'evo4-setup.sh' manually after connecting the device"
 fi
 
 if [[ -n "${SOURCE_ID:-}" ]]; then
     wpctl set-default "$SOURCE_ID"
-    ok "Default source: evo4_stereo_mic (id=$SOURCE_ID)"
+    ok "Default source: EVO4 Microphone (id=$SOURCE_ID)"
 else
-    warn "Could not find evo4_stereo_mic"
+    warn "Could not find evo4_mic"
 fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────

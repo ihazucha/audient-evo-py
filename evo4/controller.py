@@ -9,6 +9,7 @@ Controls:
   Extension Unit 56: monitor mix, 0..127
   Extension Unit 58: input mute, phantom power (48V)
   Extension Unit 59: output mute
+  Mixer Unit 60: loopback mixer, 6 inputs × 2 outputs, CN 0-11
 """
 
 import math
@@ -35,6 +36,35 @@ _GAIN_DB_MIN = -8.0
 _GAIN_DB_MAX = 50.0
 
 _NUM_CHANNELS = 2      # CH1 and CH2 (UAC descriptor reports 4 but CH3-4 are internal)
+
+# Mixer Unit 60 (MU60) — single 6-input × 2-output loopback-only mixer.
+# All 12 cross-points (CN 0-11) route into the loopback bus (USB capture CH3/4).
+# Headphone/main output is controlled by EU56 (monitor mix) + FU10 (volume),
+# NOT by MU60. Write-only (GET_CUR STALLs). Uses UAC2 Q8.8 dB values.
+#
+# Inputs (6):                    CN mapping (CN = out_idx + in_idx * 2):
+#   0: Input 1 (mic/line)         CN 0,1  — Input1  → Loopback L/R
+#   1: Input 2 (mic/line)         CN 2,3  — Input2  → Loopback L/R
+#   2: DAW L (Main Output)        CN 4,5  — DAW L   → Loopback L/R
+#   3: DAW R (Main Output)        CN 6,7  — DAW R   → Loopback L/R
+#   4: Loopback Out L (CH3)       CN 8,9  — LoopOut L → Loopback L/R
+#   5: Loopback Out R (CH4)       CN 10,11 — LoopOut R → Loopback L/R
+# Outputs (2): Loopback L, Loopback R
+_MU60 = 0x3C00          # (EntityID=60 << 8) | Interface=0
+_CS_MIXER = 1            # Mixer Control selector (UAC2 standard for MU)
+_MIXER_DB_MIN = -128.0   # 0x8000 = silence
+_MIXER_DB_MAX = 8.0      # 0x0800
+
+# First 4 inputs × 2 outputs = CN 0-7 (Input1, Input2, DAW L, DAW R)
+_OUT_NUM_INPUTS = 4
+_OUT_NUM_OUTPUTS = 2
+
+# Loopback Output inputs × 2 outputs = CN 8-11 (LoopOut L, LoopOut R)
+_LOOP_BASE_CN = _OUT_NUM_INPUTS * _OUT_NUM_OUTPUTS  # 8
+_LOOP_NUM_INPUTS = 2
+_LOOP_NUM_OUTPUTS = 2
+
+_MIXER_MAX_CN = _LOOP_BASE_CN + _LOOP_NUM_INPUTS * _LOOP_NUM_OUTPUTS  # 12
 
 
 def _db_to_usb(db: float) -> int:
@@ -258,3 +288,79 @@ class EVO4Controller:
             data = raw.to_bytes(2, "little")
             kmod.set_cur(fd, wValue=self._EU56_WVALUE,
                               wIndex=self._EU56_WINDEX, data=data)
+
+    # --- Mixer Matrix (Mixer Unit 60) ---
+    # Single 6×2 loopback mixer. All CN 0-11 route to Loopback L/R.
+    # Write-only (GET_CUR STALLs). Uses UAC2 Q8.8 dB values.
+
+    def set_mixer_crosspoint(self, cn: int, db: float):
+        """Set a single MU60 cross-point gain. cn=0..11, db=-128..+8."""
+        if not 0 <= cn < _MIXER_MAX_CN:
+            raise ValueError(f"Cross-point CN must be 0..{_MIXER_MAX_CN - 1}, got {cn}")
+        db = max(_MIXER_DB_MIN, min(_MIXER_DB_MAX, db))
+        with self._device() as fd:
+            kmod.set_cur(fd, wValue=(_CS_MIXER << 8) | cn,
+                         wIndex=_MU60, data=_db_to_usb(db).to_bytes(2, "little"))
+
+    def get_mixer_crosspoint(self, cn: int) -> float:
+        """Try GET_CUR on MU60. Raises OSError (EPIPE/STALL) if write-only."""
+        if not 0 <= cn < _MIXER_MAX_CN:
+            raise ValueError(f"Cross-point CN must be 0..{_MIXER_MAX_CN - 1}, got {cn}")
+        with self._device() as fd:
+            data = kmod.get_cur(fd, wValue=(_CS_MIXER << 8) | cn,
+                                wIndex=_MU60, length=2)
+            return _usb_to_db(int.from_bytes(data[:2], "little", signed=True))
+
+    @staticmethod
+    def _pan_to_lr_db(volume_db: float, pan: float) -> tuple[float, float]:
+        """Convert volume + pan to (left_dB, right_dB).
+        pan: -100.0 (full left) to +100.0 (full right), 0.0 = center.
+        Uses equal-power pan law (cos/sin).
+        """
+        pan = max(-100.0, min(100.0, pan))
+        p = (pan + 100.0) / 200.0   # normalize to 0..1
+        angle = p * (math.pi / 2)
+        l_lin = math.cos(angle)
+        r_lin = math.sin(angle)
+        l_db = volume_db + (20 * math.log10(l_lin) if l_lin > 1e-10 else _MIXER_DB_MIN)
+        r_db = volume_db + (20 * math.log10(r_lin) if r_lin > 1e-10 else _MIXER_DB_MIN)
+        return (max(_MIXER_DB_MIN, l_db), max(_MIXER_DB_MIN, r_db))
+
+    def set_mixer_input(self, input_num: int, gain_db: float, pan: float = 0.0):
+        """Route mic/line input to loopback mix with gain and pan.
+        input_num: 1 or 2
+        gain_db: -128.0..+8.0, pan: -100.0..+100.0
+        Input1=in0 (CN 0,1), Input2=in1 (CN 2,3).
+        """
+        if input_num not in (1, 2):
+            raise ValueError(f"input_num must be 1 or 2, got {input_num}")
+        l_db, r_db = self._pan_to_lr_db(gain_db, pan)
+        base = (input_num - 1) * _OUT_NUM_OUTPUTS  # input1 → CN 0; input2 → CN 2
+        self.set_mixer_crosspoint(base + 0, l_db)   # → Loopback L
+        self.set_mixer_crosspoint(base + 1, r_db)   # → Loopback R
+
+    def set_mixer_output(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0):
+        """Route Main Output (DAW playback CH1/2) to loopback mix.
+        volume_db: -128.0..+8.0
+        pan_l: pan for DAW L (-100..+100), pan_r: pan for DAW R
+        DAW_L=in2 (CN 4,5), DAW_R=in3 (CN 6,7).
+        """
+        l_db_l, r_db_l = self._pan_to_lr_db(volume_db, pan_l)  # DAW L → Loop L/R
+        l_db_r, r_db_r = self._pan_to_lr_db(volume_db, pan_r)  # DAW R → Loop L/R
+        self.set_mixer_crosspoint(2 * _OUT_NUM_OUTPUTS + 0, l_db_l)  # CN 4: DAW_L → Loop L
+        self.set_mixer_crosspoint(2 * _OUT_NUM_OUTPUTS + 1, r_db_l)  # CN 5: DAW_L → Loop R
+        self.set_mixer_crosspoint(3 * _OUT_NUM_OUTPUTS + 0, l_db_r)  # CN 6: DAW_R → Loop L
+        self.set_mixer_crosspoint(3 * _OUT_NUM_OUTPUTS + 1, r_db_r)  # CN 7: DAW_R → Loop R
+
+    def set_mixer_loopback(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0):
+        """Route Loopback Output (DAW playback CH3/4) to loopback mix.
+        volume_db: -128.0..+8.0
+        pan_l: pan for LoopOut L (-100..+100), pan_r: pan for LoopOut R
+        LoopOut_L=in4 (CN 8,9), LoopOut_R=in5 (CN 10,11).
+        """
+        l_db_l, r_db_l = self._pan_to_lr_db(volume_db, pan_l)  # DAW L → Loop L/R
+        l_db_r, r_db_r = self._pan_to_lr_db(volume_db, pan_r)  # DAW R → Loop L/R
+        self.set_mixer_crosspoint(_LOOP_BASE_CN + 0, l_db_l)    # CN 8: DAW_L → Loop L
+        self.set_mixer_crosspoint(_LOOP_BASE_CN + 1, r_db_l)    # CN 9: DAW_L → Loop R
+        self.set_mixer_crosspoint(_LOOP_BASE_CN + 2, l_db_r)    # CN 10: DAW_R → Loop L
+        self.set_mixer_crosspoint(_LOOP_BASE_CN + 3, r_db_r)    # CN 11: DAW_R → Loop R
