@@ -1,4 +1,4 @@
-# Design — Audient EVO4 Linux Controller
+# Design - Audient EVO4 Linux Controller
 
 ## Problem
 
@@ -55,10 +55,10 @@ interfaces, so `snd-usb-audio` continues streaming undisturbed.
 │ ┌───────────────────────────────────────────────────┐    │
 │ │              Audient EVO4 (USB Device)            │    │
 │ │  Endpoint 0 (Control) ◄── all control transfers   │    │
-│ │  Interface 0 — Audio Control (UAC2 descriptors)   │    │
-│ │  Interface 1 — Audio Streaming (playback)         │    │
-│ │  Interface 2 — Audio Streaming (capture)          │    │
-│ │  Interface 3 — DFU (unused, bound by evo4_raw)    │    │
+│ │  Interface 0 - Audio Control (UAC2 descriptors)  │    │
+│ │  Interface 1 - Audio Streaming (playback)        │    │
+│ │  Interface 2 - Audio Streaming (capture)         │    │
+│ │  Interface 3 - DFU (unused, bound by evo4_raw)   │    │
 │ └───────────────────────────────────────────────────┘    │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -77,14 +77,14 @@ The struct is identical in kernel and userspace (264 bytes, little-endian):
 | wLength | u16 | Data length (max 256) |
 | data | u8[256] | Transfer payload |
 
-ioctl number: `_IOWR('E', 0, struct evo4_ctrl_xfer)` — read+write, type 'E',
+ioctl number: `_IOWR('E', 0, struct evo4_ctrl_xfer)` - read+write, type 'E',
 number 0, size 264.
 
 ## Supported Controls
 
 | Entity | wIndex | Function | Range | Notes |
 |--------|--------|----------|-------|-------|
-| Feature Unit 10 | `0x0A00` | Output volume | -127..0 dB | CS=2, 2 channels |
+| Feature Unit 10 | `0x0A00` | Output volume | -96..0 dB | CS=2, 2 channels |
 | Feature Unit 11 | `0x0B00` | Input gain | -8..+50 dB | CS=2, 2 channels |
 | Extension Unit 56 | `0x3800` | Monitor mix | 0..127 | CS=0 CN=0 only |
 | Extension Unit 58 | `0x3A00` | Phantom 48V | 0/1 (4 bytes) | CS=0, per-channel |

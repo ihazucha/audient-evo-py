@@ -1,16 +1,17 @@
-# Audient EVO 4 — Linux Controller
+# Audient EVO 4 - Linux Controller
 
 Reverse-engineered Linux controller for the Audient EVO 4 USB audio interface.
 Replaces the vendor's Windows/macOS-only control app. Coexists with
-`snd-usb-audio` — audio streaming is never interrupted.
+`snd-usb-audio` - audio streaming is never interrupted.
 
 ## Features
 
-- **Output volume** — per-channel, power curve matching the vendor app
-- **Input gain** — per-channel, linear
-- **Monitor mix** — input/playback ratio
-- **Mute** — per-input and output
-- **Phantom power** — 48V per-input toggle
+- **Output volume** - per-channel, power curve matching the vendor app
+- **Input gain** - per-channel, linear
+- **Monitor mix** - input/playback ratio
+- **Mute** - per-input and output
+- **Phantom power** - 48V per-input toggle
+- **Loopback mixer** - MU60 6x2 matrix with per-input gain and pan
 
 ## How It Works
 
@@ -66,6 +67,10 @@ python evoctl.py get volume --db
 python evoctl.py set gain 50 -c 1
 python evoctl.py get gain
 
+# Gain in dB (-8..+50)
+python evoctl.py set gain -2 --db -c 1
+python evoctl.py get gain --db
+
 # Monitor mix (0=input, 100=playback)
 python evoctl.py set mix 50
 python evoctl.py get mix
@@ -78,31 +83,44 @@ python evoctl.py get mute -t input1
 python evoctl.py set phantom on -t input1
 python evoctl.py get phantom -t input1
 
+# Loopback mixer - route mic/line inputs to loopback capture
+python evoctl.py mixer input1 --volume -6 --pan 0
+python evoctl.py mixer input2 --volume -6 --pan 0
+
+# Loopback mixer - route DAW playback (main output) to loopback capture
+python evoctl.py mixer output --volume -6 --pan-l -100 --pan-r 100
+
+# Loopback mixer - route DAW playback (loopback output CH3/4) to loopback capture
+python evoctl.py mixer loopback --volume -128
+
 # Show all parameters
 python evoctl.py status
 ```
 
 Targets for mute: `input1`, `input2`, `output`.
 Targets for phantom: `input1`, `input2`.
-Aliases: `g` for `get`, `s` for `set`.
+Mixer volume range: -128..+8 dB (-128 = mute). Pan: -100 (left) to +100 (right).
+Aliases: `g` for `get`, `s` for `set`, `m` for `mixer`.
 
 ## Project Structure
 
 ```
-evoctl.py              CLI entry point
+evoctl.py                  CLI entry point
 evo4/
-  controller.py        EVO4Controller — device control logic
-  kmod.py              Python ioctl wrapper for /dev/evo4
+  controller.py            EVO4Controller - device control logic
+  kmod.py                  Python ioctl wrapper for /dev/evo4
 kmod/
-  evo4_raw.c           Kernel module (~180 LOC)
-  install.sh           DKMS install script
-  uninstall.sh         Uninstall script
+  evo4_raw.c               Kernel module (~180 LOC)
+  install.sh               DKMS install script
+  uninstall.sh             Uninstall script
 tests/
-  test_controller.py   Integration tests (requires connected EVO4)
-  test_kmod.py         Unit tests (no hardware needed)
+  test_controller.py       Integration tests (requires connected EVO4)
+  test_kmod.py             Unit tests (no hardware needed)
+  test_mixer_audio.py      MU60 tests - DAW/loopback routing
+  test_mixer_mic.py        MU60 tests - mic/line input routing
 dev/
-  probe.py             USB entity discovery/testing tool
-  FINDINGS.md          Raw reverse-engineering results
+  probe.py                 USB entity discovery/testing tool
+  FINDINGS.md              Raw reverse-engineering results
 ```
 
 ## TODO

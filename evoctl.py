@@ -33,6 +33,14 @@ def parse_args():
 
     subparsers.add_parser('status', help='Show all device parameters.')
 
+    save_parser = subparsers.add_parser('save', help='Save device config to file.')
+    save_parser.add_argument('path', nargs='?', default=None,
+                             help='Config file path (default: ~/.config/audient-evo-py/config.json).')
+
+    load_parser = subparsers.add_parser('load', help='Load and apply config from file.')
+    load_parser.add_argument('path', nargs='?', default=None,
+                             help='Config file path (default: ~/.config/audient-evo-py/config.json).')
+
     # --- mixer subcommand ---
     mixer_parser = subparsers.add_parser('mixer', aliases=['m'],
                                          help='Control MU60 mixer matrix.')
@@ -66,7 +74,7 @@ def parse_args():
 
     args = parser.parse_args()
 
-    if args.action in ('status', 'mixer', 'm'):
+    if args.action in ('status', 'save', 'load', 'mixer', 'm'):
         return args
 
     if args.action in ('set', 's'):
@@ -197,19 +205,35 @@ def _run(args, evo):
             print(f"[SET] Phantom 48V {args.target}: {'on' if args.value else 'off'}")
 
     elif args.action in ('mixer', 'm'):
+        from evo4.config import load_mixer_state, save_mixer_state
         sec = args.mixer_section
+        state = load_mixer_state() or {}
         if sec in ('input1', 'input2'):
             num = int(sec[-1])
             evo.set_mixer_input(num, args.volume, args.pan)
+            state[sec] = {"volume": args.volume, "pan": args.pan}
             print(f"[SET] Mixer {sec}: volume={args.volume:+.1f} dB, pan={args.pan:+.0f}")
         elif sec == 'output':
             evo.set_mixer_output(args.volume, args.pan_l, args.pan_r)
+            state["output"] = {"volume": args.volume, "pan_l": args.pan_l, "pan_r": args.pan_r}
             print(f"[SET] Mixer output: volume={args.volume:+.1f} dB, "
                   f"pan_l={args.pan_l:+.0f}, pan_r={args.pan_r:+.0f}")
         elif sec == 'loopback':
             evo.set_mixer_loopback(args.volume, args.pan_l, args.pan_r)
+            state["loopback"] = {"volume": args.volume, "pan_l": args.pan_l, "pan_r": args.pan_r}
             print(f"[SET] Mixer loopback: volume={args.volume:+.1f} dB, "
                   f"pan_l={args.pan_l:+.0f}, pan_r={args.pan_r:+.0f}")
+        save_mixer_state(state)
+
+    elif args.action == 'save':
+        from evo4.config import save
+        path = save(evo, args.path)
+        print(f"Config saved to {path}")
+
+    elif args.action == 'load':
+        from evo4.config import load_and_apply
+        load_and_apply(evo, args.path)
+        print("Config loaded and applied.")
 
     elif args.action == 'status':
         with evo:
