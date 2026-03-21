@@ -34,21 +34,19 @@ def save_mixer_state(state: dict, path=None):
 
 def snapshot(evo) -> dict:
     """Read all current device settings into a dict."""
-    vol  = evo.get_volume()
-    gain = evo.get_gain()
     data = {
         "monitor": evo.get_mix(),
         "output": {
-            "volume": vol[0],   # channels are ganged
+            "volume": evo.get_volume(),
             "mute":   evo.get_mute("output"),
         },
         "input1": {
-            "gain":    gain[0],
+            "gain":    evo.get_gain("input1"),
             "mute":    evo.get_mute("input1"),
             "phantom": evo.get_phantom("input1"),
         },
         "input2": {
-            "gain":    gain[1],
+            "gain":    evo.get_gain("input2"),
             "mute":    evo.get_mute("input2"),
             "phantom": evo.get_phantom("input2"),
         },
@@ -86,9 +84,8 @@ def apply(evo, data: dict):
     for ch in ("input1", "input2"):
         if ch in data:
             inp = data[ch]
-            idx = 1 if ch == "input1" else 2
             if "gain" in inp:
-                evo.set_gain(inp["gain"], channel=idx)
+                evo.set_gain(ch, inp["gain"])
             if "mute" in inp:
                 evo.set_mute(ch, inp["mute"])
             if "phantom" in inp:

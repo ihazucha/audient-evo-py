@@ -111,34 +111,18 @@ class TestGainCurve:
 # --- Hardware integration tests ---
 
 class TestVolume:
-    def test_set_and_get_all_channels(self, evo):
+    def test_set_and_get(self, evo):
         original = evo.get_volume()
-        target = 42 if original[0] != 42 else 43
+        target = 42 if original != 42 else 43
 
         try:
             evo.set_volume(target)
             time.sleep(SETTLE_TIME)
             result = evo.get_volume()
-            for ch, val in enumerate(result):
-                assert abs(val - target) <= 1, \
-                    f"Volume ch{ch}: expected ~{target}, got {val}"
+            assert abs(result - target) <= 1, \
+                f"Volume: expected ~{target}, got {result}"
         finally:
-            for ch, val in enumerate(original):
-                evo.set_volume(val, channel=ch + 1)
-
-    def test_set_and_get_single_channel(self, evo):
-        original = evo.get_volume()
-        ch = 1
-        target = 37 if original[ch - 1] != 37 else 38
-
-        try:
-            evo.set_volume(target, channel=ch)
-            time.sleep(SETTLE_TIME)
-            result = evo.get_volume()
-            assert abs(result[ch - 1] - target) <= 1, \
-                f"Volume ch{ch}: expected ~{target}, got {result[ch - 1]}"
-        finally:
-            evo.set_volume(original[ch - 1], channel=ch)
+            evo.set_volume(original)
 
     def test_volume_boundaries(self, evo):
         original = evo.get_volume()
@@ -147,12 +131,10 @@ class TestVolume:
                 evo.set_volume(target)
                 time.sleep(SETTLE_TIME)
                 result = evo.get_volume()
-                for ch, val in enumerate(result):
-                    assert val == target, \
-                        f"Volume ch{ch} at boundary {target}: got {val}"
+                assert result == target, \
+                    f"Volume at boundary {target}: got {result}"
         finally:
-            for ch, val in enumerate(original):
-                evo.set_volume(val, channel=ch + 1)
+            evo.set_volume(original)
 
     def test_set_returns_raw_and_db(self, evo):
         original = evo.get_volume()
@@ -162,95 +144,76 @@ class TestVolume:
             assert isinstance(db, float)
             assert db == pytest.approx(-20.0, abs=0.5)
         finally:
-            for ch, val in enumerate(original):
-                evo.set_volume(val, channel=ch + 1)
+            evo.set_volume(original)
 
     def test_debug_format(self, evo):
-        debug = evo.get_volume_debug()
-        assert len(debug) == 2
-        for pct, raw, db in debug:
-            assert isinstance(pct, int)
-            assert isinstance(raw, int)
-            assert isinstance(db, float)
-            assert 0 <= pct <= 100
+        pct, raw, db = evo.get_volume_debug()
+        assert isinstance(pct, int)
+        assert isinstance(raw, int)
+        assert isinstance(db, float)
+        assert 0 <= pct <= 100
 
 
 class TestGain:
-    def test_set_and_get_all_channels(self, evo):
-        original = evo.get_gain()
-        target = 55 if original[0] != 55 else 56
+    @pytest.mark.parametrize("target", ["input1", "input2"])
+    def test_set_and_get(self, evo, target):
+        original = evo.get_gain(target)
+        goal = 55 if original != 55 else 56
 
         try:
-            evo.set_gain(target)
+            evo.set_gain(target, goal)
             time.sleep(SETTLE_TIME)
-            result = evo.get_gain()
-            for ch, val in enumerate(result):
-                assert abs(val - target) <= 1, \
-                    f"Gain ch{ch}: expected ~{target}, got {val}"
+            result = evo.get_gain(target)
+            assert abs(result - goal) <= 1, \
+                f"Gain {target}: expected ~{goal}, got {result}"
         finally:
-            for ch, val in enumerate(original):
-                evo.set_gain(val, channel=ch + 1)
+            evo.set_gain(target, original)
 
-    def test_set_and_get_single_channel(self, evo):
-        original = evo.get_gain()
-        ch = 1
-        target = 30 if original[ch - 1] != 30 else 31
-
+    def test_per_input_independence(self, evo):
+        orig1 = evo.get_gain("input1")
+        orig2 = evo.get_gain("input2")
         try:
-            evo.set_gain(target, channel=ch)
+            evo.set_gain("input1", 10)
+            evo.set_gain("input2", 90)
             time.sleep(SETTLE_TIME)
-            result = evo.get_gain()
-            assert abs(result[ch - 1] - target) <= 1, \
-                f"Gain ch{ch}: expected ~{target}, got {result[ch - 1]}"
+            r1 = evo.get_gain("input1")
+            r2 = evo.get_gain("input2")
+            assert abs(r1 - 10) <= 1, f"input1: expected ~10, got {r1}"
+            assert abs(r2 - 90) <= 1, f"input2: expected ~90, got {r2}"
         finally:
-            evo.set_gain(original[ch - 1], channel=ch)
+            evo.set_gain("input1", orig1)
+            evo.set_gain("input2", orig2)
 
-    def test_per_channel_independence(self, evo):
-        original = evo.get_gain()
+    @pytest.mark.parametrize("target", ["input1", "input2"])
+    def test_gain_boundaries(self, evo, target):
+        original = evo.get_gain(target)
         try:
-            evo.set_gain(10, channel=1)
-            evo.set_gain(90, channel=2)
-            time.sleep(SETTLE_TIME)
-            result = evo.get_gain()
-            assert abs(result[0] - 10) <= 1, f"Ch1: expected ~10, got {result[0]}"
-            assert abs(result[1] - 90) <= 1, f"Ch2: expected ~90, got {result[1]}"
-        finally:
-            for ch, val in enumerate(original):
-                evo.set_gain(val, channel=ch + 1)
-
-    def test_gain_boundaries(self, evo):
-        original = evo.get_gain()
-        try:
-            for target in (0, 100):
-                evo.set_gain(target)
+            for goal in (0, 100):
+                evo.set_gain(target, goal)
                 time.sleep(SETTLE_TIME)
-                result = evo.get_gain()
-                for ch, val in enumerate(result):
-                    assert val == target, \
-                        f"Gain ch{ch} at boundary {target}: got {val}"
+                result = evo.get_gain(target)
+                assert result == goal, \
+                    f"Gain {target} at boundary {goal}: got {result}"
         finally:
-            for ch, val in enumerate(original):
-                evo.set_gain(val, channel=ch + 1)
+            evo.set_gain(target, original)
 
     def test_set_returns_raw_and_db(self, evo):
-        original = evo.get_gain()
+        original = evo.get_gain("input1")
         try:
-            raw, db = evo.set_gain(0)
+            raw, db = evo.set_gain("input1", 0)
             assert db == pytest.approx(-8.0)
-            raw, db = evo.set_gain(100)
+            raw, db = evo.set_gain("input1", 100)
             assert db == pytest.approx(50.0)
         finally:
-            for ch, val in enumerate(original):
-                evo.set_gain(val, channel=ch + 1)
+            evo.set_gain("input1", original)
 
-    def test_debug_format(self, evo):
-        debug = evo.get_gain_debug()
-        assert len(debug) == 2
-        for pct, raw, db in debug:
-            assert isinstance(pct, int)
-            assert isinstance(raw, int)
-            assert isinstance(db, float)
-            assert 0 <= pct <= 100
+    @pytest.mark.parametrize("target", ["input1", "input2"])
+    def test_debug_format(self, evo, target):
+        pct, raw, db = evo.get_gain_debug(target)
+        assert isinstance(pct, int)
+        assert isinstance(raw, int)
+        assert isinstance(db, float)
+        assert 0 <= pct <= 100
 
 
 class TestMute:

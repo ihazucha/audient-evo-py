@@ -130,42 +130,33 @@ class EVO4Controller:
             kmod.set_cur(fd, wValue=(_CS_VOLUME << 8) | cn,
                               wIndex=unit, data=(raw & 0xFFFF).to_bytes(2, "little"))
 
-    def get_volume(self) -> list[int]:
-        """Get output volume as list of per-channel percentages (0-100)."""
-        return [self._vol_db_to_pct(_usb_to_db(self._get_fu_raw(_FU10, cn)))
-                for cn in range(1, _NUM_CHANNELS + 1)]
+    def get_volume(self) -> int:
+        """Get output volume as percentage (0-100). Both channels are ganged."""
+        return self._vol_db_to_pct(_usb_to_db(self._get_fu_raw(_FU10, 1)))
 
-    def get_volume_debug(self) -> list[tuple[int, int, float]]:
-        """Get volume with debug info: list of (percent, raw, dB) per channel."""
-        result = []
-        for cn in range(1, _NUM_CHANNELS + 1):
-            raw = self._get_fu_raw(_FU10, cn)
-            db = _usb_to_db(raw)
-            pct = self._vol_db_to_pct(db)
-            result.append((pct, raw, db))
-        return result
+    def get_volume_debug(self) -> tuple[int, int, float]:
+        """Get volume with debug info: (percent, raw, dB)."""
+        raw = self._get_fu_raw(_FU10, 1)
+        db = _usb_to_db(raw)
+        pct = self._vol_db_to_pct(db)
+        return (pct, raw, db)
 
-    def set_volume(self, percent: int, channel: int | None = None) -> tuple[int, float]:
-        """Set output volume (0-100). channel is 1-based, None = all active.
+    def set_volume(self, percent: int) -> tuple[int, float]:
+        """Set output volume (0-100) on both channels.
         Returns (raw, dB) that was sent."""
         db = self._vol_pct_to_db(percent)
         raw = _db_to_usb(db)
-        if channel is not None:
-            self._set_fu_raw(_FU10, channel, raw)
-        else:
-            for cn in range(1, _NUM_CHANNELS + 1):
-                self._set_fu_raw(_FU10, cn, raw)
+        for cn in range(1, _NUM_CHANNELS + 1):
+            self._set_fu_raw(_FU10, cn, raw)
         return (raw if raw <= 0x7FFF else raw - 0x10000, db)
 
-    def set_volume_db(self, db: float, channel: int | None = None) -> tuple[int, float]:
-        """Set output volume in dB (-96..0). Returns (raw, dB) that was sent."""
+    def set_volume_db(self, db: float) -> tuple[int, float]:
+        """Set output volume in dB (-96..0) on both channels.
+        Returns (raw, dB) that was sent."""
         db = max(_VOL_DB_MIN, min(_VOL_DB_MAX, db))
         raw = _db_to_usb(db)
-        if channel is not None:
-            self._set_fu_raw(_FU10, channel, raw)
-        else:
-            for cn in range(1, _NUM_CHANNELS + 1):
-                self._set_fu_raw(_FU10, cn, raw)
+        for cn in range(1, _NUM_CHANNELS + 1):
+            self._set_fu_raw(_FU10, cn, raw)
         return (raw if raw <= 0x7FFF else raw - 0x10000, db)
 
     # --- Input Gain (Feature Unit 11) ---
@@ -181,42 +172,37 @@ class EVO4Controller:
         db = max(_GAIN_DB_MIN, min(_GAIN_DB_MAX, db))
         return round(100.0 * (db - _GAIN_DB_MIN) / (_GAIN_DB_MAX - _GAIN_DB_MIN))
 
-    def get_gain(self) -> list[int]:
-        """Get input gain as list of per-channel percentages (0-100)."""
-        return [self._gain_db_to_pct(_usb_to_db(self._get_fu_raw(_FU11, cn)))
-                for cn in range(1, _NUM_CHANNELS + 1)]
+    _GAIN_TARGETS = {"input1": 1, "input2": 2}
 
-    def get_gain_debug(self) -> list[tuple[int, int, float]]:
-        """Get gain with debug info: list of (percent, raw, dB) per channel."""
-        result = []
-        for cn in range(1, _NUM_CHANNELS + 1):
-            raw = self._get_fu_raw(_FU11, cn)
-            db = _usb_to_db(raw)
-            pct = self._gain_db_to_pct(db)
-            result.append((pct, raw, db))
-        return result
+    def get_gain(self, target: str) -> int:
+        """Get input gain as percentage (0-100) for target (input1, input2)."""
+        cn = self._GAIN_TARGETS[target]
+        return self._gain_db_to_pct(_usb_to_db(self._get_fu_raw(_FU11, cn)))
 
-    def set_gain(self, percent: int, channel: int | None = None) -> tuple[int, float]:
-        """Set input gain (0-100). channel is 1-based, None = all active.
+    def get_gain_debug(self, target: str) -> tuple[int, int, float]:
+        """Get gain with debug info: (percent, raw, dB) for target."""
+        cn = self._GAIN_TARGETS[target]
+        raw = self._get_fu_raw(_FU11, cn)
+        db = _usb_to_db(raw)
+        pct = self._gain_db_to_pct(db)
+        return (pct, raw, db)
+
+    def set_gain(self, target: str, percent: int) -> tuple[int, float]:
+        """Set input gain (0-100) for target (input1, input2).
         Returns (raw, dB) that was sent."""
+        cn = self._GAIN_TARGETS[target]
         db = self._gain_pct_to_db(percent)
         raw = _db_to_usb(db)
-        if channel is not None:
-            self._set_fu_raw(_FU11, channel, raw)
-        else:
-            for cn in range(1, _NUM_CHANNELS + 1):
-                self._set_fu_raw(_FU11, cn, raw)
+        self._set_fu_raw(_FU11, cn, raw)
         return (raw if raw <= 0x7FFF else raw - 0x10000, db)
 
-    def set_gain_db(self, db: float, channel: int | None = None) -> tuple[int, float]:
-        """Set input gain in dB (-8..+50). Returns (raw, dB) that was sent."""
+    def set_gain_db(self, target: str, db: float) -> tuple[int, float]:
+        """Set input gain in dB (-8..+50) for target (input1, input2).
+        Returns (raw, dB) that was sent."""
+        cn = self._GAIN_TARGETS[target]
         db = max(_GAIN_DB_MIN, min(_GAIN_DB_MAX, db))
         raw = _db_to_usb(db)
-        if channel is not None:
-            self._set_fu_raw(_FU11, channel, raw)
-        else:
-            for cn in range(1, _NUM_CHANNELS + 1):
-                self._set_fu_raw(_FU11, cn, raw)
+        self._set_fu_raw(_FU11, cn, raw)
         return (raw if raw <= 0x7FFF else raw - 0x10000, db)
 
     # --- Mute (via kmod: Entity 58 for inputs, Entity 59 for output) ---
@@ -272,12 +258,12 @@ class EVO4Controller:
 
     # --- Full device status (raw bytes + decode) ---
 
-    # Packed struct: vol_ch1, vol_ch2, gain_ch1, gain_ch2 (int16 USB Q8.8),
+    # Packed struct: vol (int16 USB Q8.8), gain_ch1, gain_ch2 (int16),
     #               mix_raw (0-127), in1_mute, in2_mute, out_mute, in1_ph, in2_ph (uint8)
-    _STATUS_FMT = '<hhhhBBBBBB'  # 14 bytes total
+    _STATUS_FMT = '<hhhBBBBBB'  # 12 bytes total
 
     def get_status_raw(self) -> bytes:
-        """Read all readable device state as a 14-byte packed struct.
+        """Read all readable device state as a 12-byte packed struct.
 
         Use decode_status() to convert to a config dict.
         """
@@ -285,8 +271,7 @@ class EVO4Controller:
         if not already_open:
             self._fd = kmod.open_device()
         try:
-            vol1  = self._get_fu_raw(_FU10, 1)
-            vol2  = self._get_fu_raw(_FU10, 2)
+            vol   = self._get_fu_raw(_FU10, 1)
             gain1 = self._get_fu_raw(_FU11, 1)
             gain2 = self._get_fu_raw(_FU11, 2)
             with self._device() as fd:
@@ -303,7 +288,7 @@ class EVO4Controller:
                 self._fd.close()
                 self._fd = None
         return struct.pack(self._STATUS_FMT,
-                           vol1, vol2, gain1, gain2,
+                           vol, gain1, gain2,
                            mix_raw, in1m, in2m, outm, in1p, in2p)
 
     @staticmethod
@@ -313,12 +298,12 @@ class EVO4Controller:
         The returned dict has the same format as evo4.config.snapshot() and
         can be passed directly to evo4.config.apply().
         """
-        vol1r, _, gain1r, gain2r, mix_raw, in1m, in2m, outm, in1p, in2p = \
+        vol_raw, gain1r, gain2r, mix_raw, in1m, in2m, outm, in1p, in2p = \
             struct.unpack(EVO4Controller._STATUS_FMT, data)
         return {
             "monitor": round(mix_raw * 100 / 127),
             "output": {
-                "volume": EVO4Controller._vol_db_to_pct(_usb_to_db(vol1r)),
+                "volume": EVO4Controller._vol_db_to_pct(_usb_to_db(vol_raw)),
                 "mute":   bool(outm),
             },
             "input1": {

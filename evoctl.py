@@ -6,28 +6,24 @@ from evo4.controller import EVO4Controller
 PARAMETERS = ['volume', 'gain', 'mute', 'mix', 'phantom']
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Control Audient EVO4 settings.")
+    parser = argparse.ArgumentParser(description="Audient EVO4 config tool.")
     subparsers = parser.add_subparsers(dest='action', required=True)
 
+    INPUT_TARGETS = ['input1', 'input2']
     MUTE_TARGETS = ['input1', 'input2', 'output']
-    PHANTOM_TARGETS = ['input1', 'input2']
 
     get_parser = subparsers.add_parser('get', aliases=['g'], help='Get a device parameter.')
     get_parser.add_argument('parameter', choices=PARAMETERS)
-    get_parser.add_argument('--channel', '-c', type=int, default=None,
-                            help='Channel number (1-based). Omit for all channels.')
     get_parser.add_argument('--target', '-t', choices=MUTE_TARGETS, default=None,
-                            help='Mute target (input1, input2, output).')
+                            help='Target (input1, input2, or output for mute).')
     get_parser.add_argument('--db', action='store_true',
                             help='Show volume/gain in dB only (no percentage).')
 
     set_parser = subparsers.add_parser('set', aliases=['s'], help='Set a device parameter.')
     set_parser.add_argument('parameter', choices=PARAMETERS)
     set_parser.add_argument('value', type=str)
-    set_parser.add_argument('--channel', '-c', type=int, default=None,
-                            help='Channel number (1-based). Omit for all channels.')
     set_parser.add_argument('--target', '-t', choices=MUTE_TARGETS, default=None,
-                            help='Mute target (input1, input2, output).')
+                            help='Target (input1, input2, or output for mute).')
     set_parser.add_argument('--db', action='store_true',
                             help='Interpret value as dB instead of percentage.')
 
@@ -112,12 +108,17 @@ def parse_args():
             else:
                 parser.error("Phantom value must be on/off, true/false, or 1/0.")
 
+    if args.parameter == 'gain':
+        if not args.target:
+            parser.error("Gain requires --target/-t (input1 or input2).")
+        if args.target not in INPUT_TARGETS:
+            parser.error("Gain target must be input1 or input2.")
     if args.parameter == 'mute' and not args.target:
         parser.error("Mute requires --target/-t (input1, input2, or output).")
     if args.parameter == 'phantom':
         if not args.target:
             parser.error("Phantom requires --target/-t (input1 or input2).")
-        if args.target not in PHANTOM_TARGETS:
+        if args.target not in INPUT_TARGETS:
             parser.error("Phantom target must be input1 or input2.")
 
     return args
@@ -155,34 +156,18 @@ _USB_ERRORS = {
 def _run(args, evo):
     if args.action in ('get', 'g'):
         if args.parameter == 'volume':
-            debug = evo.get_volume_debug()
-            if args.channel is not None:
-                pct, raw, db = debug[args.channel - 1]
-                if args.db:
-                    print(f"{db:+.2f}")
-                else:
-                    print(f"[GET] Volume ch{args.channel}: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
+            pct, raw, db = evo.get_volume_debug()
+            if args.db:
+                print(f"{db:+.2f}")
             else:
-                for i, (pct, raw, db) in enumerate(debug, 1):
-                    if args.db:
-                        print(f"ch{i}: {db:+.2f} dB")
-                    else:
-                        print(f"[GET] Volume ch{i}: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
+                print(f"[GET] Volume: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
 
         elif args.parameter == 'gain':
-            debug = evo.get_gain_debug()
-            if args.channel is not None:
-                pct, raw, db = debug[args.channel - 1]
-                if args.db:
-                    print(f"{db:+.2f}")
-                else:
-                    print(f"[GET] Gain ch{args.channel}: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
+            pct, raw, db = evo.get_gain_debug(args.target)
+            if args.db:
+                print(f"{db:+.2f}")
             else:
-                for i, (pct, raw, db) in enumerate(debug, 1):
-                    if args.db:
-                        print(f"ch{i}: {db:+.2f} dB")
-                    else:
-                        print(f"[GET] Gain ch{i}: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
+                print(f"[GET] Gain {args.target}: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
 
         elif args.parameter == 'mute':
             muted = evo.get_mute(args.target)
@@ -199,19 +184,17 @@ def _run(args, evo):
     elif args.action in ('set', 's'):
         if args.parameter == 'volume':
             if args.db:
-                raw, db = evo.set_volume_db(args.value, channel=args.channel)
+                raw, db = evo.set_volume_db(args.value)
             else:
-                raw, db = evo.set_volume(args.value, channel=args.channel)
-            ch_str = f" ch{args.channel}" if args.channel else ""
-            print(f"[SET] Volume:{ch_str} {db:+.2f} dB  (raw=0x{raw & 0xFFFF:04X})")
+                raw, db = evo.set_volume(args.value)
+            print(f"[SET] Volume: {db:+.2f} dB  (raw=0x{raw & 0xFFFF:04X})")
 
         elif args.parameter == 'gain':
             if args.db:
-                raw, db = evo.set_gain_db(args.value, channel=args.channel)
+                raw, db = evo.set_gain_db(args.target, args.value)
             else:
-                raw, db = evo.set_gain(args.value, channel=args.channel)
-            ch_str = f" ch{args.channel}" if args.channel else ""
-            print(f"[SET] Gain:{ch_str} {db:+.2f} dB  (raw=0x{raw & 0xFFFF:04X})")
+                raw, db = evo.set_gain(args.target, args.value)
+            print(f"[SET] Gain {args.target}: {db:+.2f} dB  (raw=0x{raw & 0xFFFF:04X})")
 
         elif args.parameter == 'mute':
             evo.set_mute(args.target, args.value)
