@@ -13,6 +13,7 @@ Controls:
 """
 
 import math
+import struct
 from contextlib import contextmanager
 from os.path import exists
 
@@ -268,6 +269,69 @@ class EVO4Controller:
 
     _EU56_WINDEX = 0x3800   # (EntityID=0x38 << 8) | Interface=0
     _EU56_WVALUE = 0x0000   # (CS=0 << 8) | CN=0
+
+    # --- Full device status (raw bytes + decode) ---
+
+    # Packed struct: vol_ch1, vol_ch2, gain_ch1, gain_ch2 (int16 USB Q8.8),
+    #               mix_raw (0-127), in1_mute, in2_mute, out_mute, in1_ph, in2_ph (uint8)
+    _STATUS_FMT = '<hhhhBBBBBB'  # 14 bytes total
+
+    def get_status_raw(self) -> bytes:
+        """Read all readable device state as a 14-byte packed struct.
+
+        Use decode_status() to convert to a config dict.
+        """
+        already_open = self._fd is not None
+        if not already_open:
+            self._fd = kmod.open_device()
+        try:
+            vol1  = self._get_fu_raw(_FU10, 1)
+            vol2  = self._get_fu_raw(_FU10, 2)
+            gain1 = self._get_fu_raw(_FU11, 1)
+            gain2 = self._get_fu_raw(_FU11, 2)
+            with self._device() as fd:
+                mix_raw = int.from_bytes(
+                    kmod.get_cur(fd, wValue=self._EU56_WVALUE,
+                                 wIndex=self._EU56_WINDEX, length=2)[:2], "little")
+            in1m = int(self.get_mute("input1"))
+            in2m = int(self.get_mute("input2"))
+            outm = int(self.get_mute("output"))
+            in1p = int(self.get_phantom("input1"))
+            in2p = int(self.get_phantom("input2"))
+        finally:
+            if not already_open and self._fd is not None:
+                self._fd.close()
+                self._fd = None
+        return struct.pack(self._STATUS_FMT,
+                           vol1, vol2, gain1, gain2,
+                           mix_raw, in1m, in2m, outm, in1p, in2p)
+
+    @staticmethod
+    def decode_status(data: bytes) -> dict:
+        """Decode a raw status blob into a config dict.
+
+        The returned dict has the same format as evo4.config.snapshot() and
+        can be passed directly to evo4.config.apply().
+        """
+        vol1r, _, gain1r, gain2r, mix_raw, in1m, in2m, outm, in1p, in2p = \
+            struct.unpack(EVO4Controller._STATUS_FMT, data)
+        return {
+            "monitor": round(mix_raw * 100 / 127),
+            "output": {
+                "volume": EVO4Controller._vol_db_to_pct(_usb_to_db(vol1r)),
+                "mute":   bool(outm),
+            },
+            "input1": {
+                "gain":    EVO4Controller._gain_db_to_pct(_usb_to_db(gain1r)),
+                "mute":    bool(in1m),
+                "phantom": bool(in1p),
+            },
+            "input2": {
+                "gain":    EVO4Controller._gain_db_to_pct(_usb_to_db(gain2r)),
+                "mute":    bool(in2m),
+                "phantom": bool(in2p),
+            },
+        }
 
     def _require_kmod(self):
         if not exists("/dev/evo4"):

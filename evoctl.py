@@ -31,7 +31,9 @@ def parse_args():
     set_parser.add_argument('--db', action='store_true',
                             help='Interpret value as dB instead of percentage.')
 
-    subparsers.add_parser('status', help='Show all device parameters.')
+    status_parser = subparsers.add_parser('status', help='Show all device parameters.')
+    status_parser.add_argument('--format', '-f', choices=['plain', 'json'], default='plain',
+                               help='Output format: plain (default) or json.')
 
     save_parser = subparsers.add_parser('save', help='Save device config to file.')
     save_parser.add_argument('path', nargs='?', default=None,
@@ -119,6 +121,27 @@ def parse_args():
             parser.error("Phantom target must be input1 or input2.")
 
     return args
+
+
+def _format_status_plain(state: dict) -> str:
+    W = 10  # label column width ("phantom:" = 8 chars, padded to 10)
+    lines = []
+    for ch, label in (('input1', 'Input 1'), ('input2', 'Input 2')):
+        inp = state[ch]
+        gain_db = EVO4Controller._gain_pct_to_db(inp['gain'])
+        lines.append(f"{label}:")
+        lines.append(f"  {'gain:':<{W}}{inp['gain']:>3d}%  ({gain_db:+.2f} dB)")
+        lines.append(f"  {'mute:':<{W}}{'on' if inp['mute'] else 'off'}")
+        lines.append(f"  {'phantom:':<{W}}{'on' if inp['phantom'] else 'off'}")
+        lines.append("")
+    out = state['output']
+    vol_db = EVO4Controller._vol_pct_to_db(out['volume'])
+    lines.append("Main output 1|2:")
+    lines.append(f"  {'volume:':<{W}}{out['volume']:>3d}%  ({vol_db:+.2f} dB)")
+    lines.append(f"  {'mute:':<{W}}{'on' if out['mute'] else 'off'}")
+    lines.append("")
+    lines.append(f"Monitor mix: {state['monitor']}%")
+    return "\n".join(lines)
 
 
 _USB_ERRORS = {
@@ -236,23 +259,12 @@ def _run(args, evo):
         print("Config loaded and applied.")
 
     elif args.action == 'status':
-        with evo:
-            vol = evo.get_volume_debug()
-            gain = evo.get_gain_debug()
-            mix = evo.get_mix()
-            phantom = {t: evo.get_phantom(t) for t in ['input1', 'input2']}
-            mutes = {t: evo.get_mute(t) for t in ['input1', 'input2', 'output']}
-
-        for i, (pct, raw, db) in enumerate(vol, 1):
-            print(f"Volume ch{i}:  {pct:>3d}%  ({db:+.2f} dB)")
-        for i, (pct, raw, db) in enumerate(gain, 1):
-            print(f"Gain ch{i}:    {pct:>3d}%  ({db:+.2f} dB)")
-        print(f"Monitor Mix:  {mix:>3d}%  (0=input, 100=playback)")
-        print(f"Mute:         input1={'on' if mutes['input1'] else 'off'}  "
-              f"input2={'on' if mutes['input2'] else 'off'}  "
-              f"output={'on' if mutes['output'] else 'off'}")
-        print(f"Phantom 48V:  input1={'on' if phantom['input1'] else 'off'}  "
-              f"input2={'on' if phantom['input2'] else 'off'}")
+        state = EVO4Controller.decode_status(evo.get_status_raw())
+        if args.format == 'json':
+            import json
+            print(json.dumps(state, indent=2))
+        else:
+            print(_format_status_plain(state))
 
 
 if __name__ == "__main__":
