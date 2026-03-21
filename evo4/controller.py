@@ -4,7 +4,7 @@ Controls go through /dev/evo4 (USB control transfers) without
 disrupting snd-usb-audio streaming.
 
 Controls:
-  Feature Unit 10: output volume, -127.00..0.00 dB
+  Feature Unit 10: output volume, -96.00..0.00 dB (effective; UAC2 descriptor reports -127)
   Feature Unit 11: input gain, -8.00..+50.00 dB
   Extension Unit 56: monitor mix, 0..127
   Extension Unit 58: input mute, phantom power (48V)
@@ -53,7 +53,7 @@ _NUM_CHANNELS = 2      # CH1 and CH2 (UAC descriptor reports 4 but CH3-4 are int
 _MU60 = 0x3C00          # (EntityID=60 << 8) | Interface=0
 _CS_MIXER = 1            # Mixer Control selector (UAC2 standard for MU)
 _MIXER_DB_MIN = -128.0   # 0x8000 = silence
-_MIXER_DB_MAX = 8.0      # 0x0800
+_MIXER_DB_MAX = 6.0      # 0x0600 (Windows app limit; hardware may accept up to +8)
 
 # First 4 inputs × 2 outputs = CN 0-7 (Input1, Input2, DAW L, DAW R)
 _OUT_NUM_INPUTS = 4
@@ -294,7 +294,7 @@ class EVO4Controller:
     # Write-only (GET_CUR STALLs). Uses UAC2 Q8.8 dB values.
 
     def set_mixer_crosspoint(self, cn: int, db: float):
-        """Set a single MU60 cross-point gain. cn=0..11, db=-128..+8."""
+        """Set a single MU60 cross-point gain. cn=0..11, db=-128..+6."""
         if not 0 <= cn < _MIXER_MAX_CN:
             raise ValueError(f"Cross-point CN must be 0..{_MIXER_MAX_CN - 1}, got {cn}")
         db = max(_MIXER_DB_MIN, min(_MIXER_DB_MAX, db))
@@ -329,7 +329,7 @@ class EVO4Controller:
     def set_mixer_input(self, input_num: int, gain_db: float, pan: float = 0.0):
         """Route mic/line input to loopback mix with gain and pan.
         input_num: 1 or 2
-        gain_db: -128.0..+8.0, pan: -100.0..+100.0
+        gain_db: -128.0..+6.0, pan: -100.0..+100.0
         Input1=in0 (CN 0,1), Input2=in1 (CN 2,3).
         """
         if input_num not in (1, 2):
@@ -341,7 +341,7 @@ class EVO4Controller:
 
     def set_mixer_output(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0):
         """Route Main Output (DAW playback CH1/2) to loopback mix.
-        volume_db: -128.0..+8.0
+        volume_db: -128.0..+6.0
         pan_l: pan for DAW L (-100..+100), pan_r: pan for DAW R
         DAW_L=in2 (CN 4,5), DAW_R=in3 (CN 6,7).
         """
@@ -354,7 +354,7 @@ class EVO4Controller:
 
     def set_mixer_loopback(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0):
         """Route Loopback Output (DAW playback CH3/4) to loopback mix.
-        volume_db: -128.0..+8.0
+        volume_db: -128.0..+6.0
         pan_l: pan for LoopOut L (-100..+100), pan_r: pan for LoopOut R
         LoopOut_L=in4 (CN 8,9), LoopOut_R=in5 (CN 10,11).
         """
