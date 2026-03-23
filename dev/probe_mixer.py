@@ -31,7 +31,7 @@ def set_cn(fd, cn, raw):
 
 
 def mute_all(fd):
-    """Mute all cross-points 0..MAX_CN-1."""
+    """Mute all cross-points [0, MAX_CN-1]."""
     for cn in range(MAX_CN):
         try:
             set_cn(fd, cn, MUTE)
@@ -47,7 +47,7 @@ def probe_single(fd, cn):
 def main():
     print("MU60 Cross-Point Probe")
     print("=" * 50)
-    print(f"Sweeping CN 0..{MAX_CN - 1}, setting each to 0 dB")
+    print(f"Sweeping CN [0, {MAX_CN - 1}], setting each to 0 dB")
     print("Watch OBS loopback capture meter for signal.")
     print()
     print("Commands:")
@@ -56,7 +56,7 @@ def main():
     print("  NUMBER = jump to that CN")
     print("  s      = set current CN to 0 dB (re-activate)")
     print("  m      = mute current CN")
-    print("  a      = activate ALL 0..current (find cumulative effect)")
+    print("  a      = activate ALL [0, current] (find cumulative effect)")
     print("  r      = read-back current CN (test GET_CUR)")
     print("  q      = quit")
     print()
@@ -107,7 +107,7 @@ def main():
                         active.add(i)
                     except OSError:
                         pass
-                print(f"  Activated CN 0..{cn}")
+                print(f"  Activated CN [0, {cn}]")
                 continue
             elif cmd == "r":
                 try:

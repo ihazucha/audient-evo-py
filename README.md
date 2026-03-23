@@ -59,7 +59,7 @@ No external dependencies. Run directly from the repo.
 python evoctl.py set volume 75
 python evoctl.py get volume
 
-# Volume in dB (-96..0)
+# Volume in dB [-96, 0]
 python evoctl.py set volume -20 --db
 python evoctl.py get volume --db
 
@@ -67,7 +67,7 @@ python evoctl.py get volume --db
 python evoctl.py set gain 50 -c 1
 python evoctl.py get gain
 
-# Gain in dB (-8..+50)
+# Gain in dB [-8, 50]
 python evoctl.py set gain -2 --db -c 1
 python evoctl.py get gain --db
 
@@ -99,7 +99,7 @@ python evoctl.py status
 
 Targets for mute: `input1`, `input2`, `output`.
 Targets for phantom: `input1`, `input2`.
-Mixer volume range: -128..+8 dB (-128 = mute). Pan: -100 (left) to +100 (right).
+Mixer volume range: [-128, 8] dB (-128 = mute). Pan: -100 (left) to 100 (right).
 Aliases: `g` for `get`, `s` for `set`, `m` for `mixer`.
 
 ## Project Structure

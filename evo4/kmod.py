@@ -19,7 +19,7 @@ EVO4_CTRL_TRANSFER = (_IOC_DIR << 30) | (_XFER_SIZE << 16) | (0x45 << 8) | 0
 # USB Audio Class constants
 REQTYPE_SET = 0x21  # Host->Device, Class, Interface
 REQTYPE_GET = 0xA1  # Device->Host, Class, Interface
-REQ_CUR = 0x01      # SET_CUR / GET_CUR
+REQ_CUR = 0x01  # SET_CUR / GET_CUR
 
 DEV_PATH = "/dev/evo4"
 
@@ -37,8 +37,9 @@ def ctrl_transfer(fd, bRequestType, bRequest, wValue, wIndex, data=b"", length=N
         wLength = len(data)
         payload = data.ljust(256, b"\x00")
 
-    buf = bytearray(struct.pack(_XFER_FMT, bRequestType, bRequest,
-                                wValue, wIndex, wLength, payload))
+    buf = bytearray(
+        struct.pack(_XFER_FMT, bRequestType, bRequest, wValue, wIndex, wLength, payload)
+    )
 
     fcntl.ioctl(fd, EVO4_CTRL_TRANSFER, buf)
 

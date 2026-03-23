@@ -84,13 +84,13 @@ number 0, size 264.
 
 | Entity | wIndex | Function | Range | Notes |
 |--------|--------|----------|-------|-------|
-| Feature Unit 10 | `0x0A00` | Output volume | -96..0 dB | CS=2, 2 channels |
-| Feature Unit 11 | `0x0B00` | Input gain | -8..+50 dB | CS=2, 2 channels |
-| Extension Unit 56 | `0x3800` | Monitor mix | 0..127 | CS=0 CN=0 only |
+| Feature Unit 10 | `0x0A00` | Output volume | [-96, 0] dB | CS=2, 2 channels |
+| Feature Unit 11 | `0x0B00` | Input gain | [-8, 50] dB | CS=2, 2 channels |
+| Extension Unit 56 | `0x3800` | Monitor mix | [0, 127] | CS=0 CN=0 only |
 | Extension Unit 58 | `0x3A00` | Phantom 48V | 0/1 (4 bytes) | CS=0, per-channel |
 | Extension Unit 58 | `0x3A00` | Input mute | 0/1 (4 bytes) | CS=2, per-channel |
 | Extension Unit 59 | `0x3B00` | Output mute | 0/1 (4 bytes) | CS=1 CN=0 |
-| Mixer Unit 60 | `0x3C00` | Loopback mixer (6×2) | -128..+6 dB | CS=1, CN=0-11, write-only |
+| Mixer Unit 60 | `0x3C00` | Loopback mixer (6×2) | [-128, 6] dB | CS=1, CN=0-11, write-only |
 
 Volume/gain use UAC2 16-bit signed values in 1/256 dB steps.
 Monitor mix is linear: 0 = full input, 127 = full playback.

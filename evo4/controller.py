@@ -4,9 +4,9 @@ Controls go through /dev/evo4 (USB control transfers) without
 disrupting snd-usb-audio streaming.
 
 Controls:
-  Feature Unit 10: output volume, -96.00..0.00 dB (effective; UAC2 descriptor reports -127)
-  Feature Unit 11: input gain, -8.00..+50.00 dB
-  Extension Unit 56: monitor mix, 0..127
+  Feature Unit 10: output volume, [-96.0, 0.0] dB (effective; UAC2 descriptor reports -127)
+  Feature Unit 11: input gain, [-8.0, 50.0] dB
+  Extension Unit 56: monitor mix, [0, 127]
   Extension Unit 58: input mute, phantom power (48V)
   Extension Unit 59: output mute
   Mixer Unit 60: loopback mixer, 6 inputs × 2 outputs, CN 0-11
@@ -27,16 +27,16 @@ _CS_VOLUME = 2
 _FU10 = 0x0A00  # Output volume
 _FU11 = 0x0B00  # Input gain
 
-# Volume (FU10): effective range -96..0 dB, power curve anchored at 50% → -20 dB
+# Volume (FU10): effective range [-96, 0] dB, power curve anchored at 50% → -20 dB
 _VOL_DB_MIN = -96.0
 _VOL_DB_MAX = 0.0
 _VOL_CURVE_N = math.log(1.0 - 20.0 / 96.0) / math.log(0.5)
 
-# Gain (FU11): -8.00..+50.00 dB
+# Gain (FU11): [-8.0, 50.0] dB
 _GAIN_DB_MIN = -8.0
 _GAIN_DB_MAX = 50.0
 
-_NUM_CHANNELS = 2      # CH1 and CH2 (UAC descriptor reports 4 but CH3-4 are internal)
+_NUM_CHANNELS = 2  # CH1 and CH2 (UAC descriptor reports 4 but CH3-4 are internal)
 
 # Mixer Unit 60 (MU60) — single 6-input × 2-output loopback-only mixer.
 # All 12 cross-points (CN 0-11) route into the loopback bus (USB capture CH3/4).
@@ -51,10 +51,10 @@ _NUM_CHANNELS = 2      # CH1 and CH2 (UAC descriptor reports 4 but CH3-4 are int
 #   4: Loopback Out L (CH3)       CN 8,9  — LoopOut L → Loopback L/R
 #   5: Loopback Out R (CH4)       CN 10,11 — LoopOut R → Loopback L/R
 # Outputs (2): Loopback L, Loopback R
-_MU60 = 0x3C00          # (EntityID=60 << 8) | Interface=0
-_CS_MIXER = 1            # Mixer Control selector (UAC2 standard for MU)
-_MIXER_DB_MIN = -128.0   # 0x8000 = silence
-_MIXER_DB_MAX = 6.0      # 0x0600 (Windows app limit; hardware may accept up to +8)
+_MU60 = 0x3C00  # (EntityID=60 << 8) | Interface=0
+_CS_MIXER = 1  # Mixer Control selector (UAC2 standard for MU)
+_MIXER_DB_MIN = -128.0  # 0x8000 = silence
+_MIXER_DB_MAX = 6.0  # 0x0600 (Windows app limit; hardware may accept up to +8)
 
 # First 4 inputs × 2 outputs = CN 0-7 (Input1, Input2, DAW L, DAW R)
 _OUT_NUM_INPUTS = 4
@@ -110,7 +110,7 @@ class EVO4Controller:
     @staticmethod
     def _vol_pct_to_db(percent: int) -> float:
         p = max(0, min(100, percent)) / 100.0
-        return _VOL_DB_MIN * (1.0 - p ** _VOL_CURVE_N)
+        return _VOL_DB_MIN * (1.0 - p**_VOL_CURVE_N)
 
     @staticmethod
     def _vol_db_to_pct(db: float) -> int:
@@ -120,15 +120,18 @@ class EVO4Controller:
     def _get_fu_raw(self, unit: int, cn: int) -> int:
         """Read raw 16-bit USB value from a Feature Unit channel."""
         with self._device() as fd:
-            data = kmod.get_cur(fd, wValue=(_CS_VOLUME << 8) | cn,
-                                     wIndex=unit, length=2)
+            data = kmod.get_cur(fd, wValue=(_CS_VOLUME << 8) | cn, wIndex=unit, length=2)
             return int.from_bytes(data[:2], "little", signed=True)
 
     def _set_fu_raw(self, unit: int, cn: int, raw: int):
         """Write raw 16-bit USB value to a Feature Unit channel."""
         with self._device() as fd:
-            kmod.set_cur(fd, wValue=(_CS_VOLUME << 8) | cn,
-                              wIndex=unit, data=(raw & 0xFFFF).to_bytes(2, "little"))
+            kmod.set_cur(
+                fd,
+                wValue=(_CS_VOLUME << 8) | cn,
+                wIndex=unit,
+                data=(raw & 0xFFFF).to_bytes(2, "little"),
+            )
 
     def get_volume(self) -> int:
         """Get output volume as percentage (0-100). Both channels are ganged."""
@@ -143,16 +146,14 @@ class EVO4Controller:
 
     def set_volume(self, percent: int) -> tuple[int, float]:
         """Set output volume (0-100) on both channels.
-        Returns (raw, dB) that was sent."""
+        Returns (raw, dB) sent."""
+        assert 0 <= percent <= 100, "Volume outside range [0, 100]"
         db = self._vol_pct_to_db(percent)
-        raw = _db_to_usb(db)
-        for cn in range(1, _NUM_CHANNELS + 1):
-            self._set_fu_raw(_FU10, cn, raw)
-        return (raw if raw <= 0x7FFF else raw - 0x10000, db)
+        return self.set_volume_db(db)
 
     def set_volume_db(self, db: float) -> tuple[int, float]:
-        """Set output volume in dB (-96..0) on both channels.
-        Returns (raw, dB) that was sent."""
+        """Set output volume in dB [-96.0, 0] on both channels.
+        Returns (raw, dB) sent"""
         db = max(_VOL_DB_MIN, min(_VOL_DB_MAX, db))
         raw = _db_to_usb(db)
         for cn in range(1, _NUM_CHANNELS + 1):
@@ -188,17 +189,15 @@ class EVO4Controller:
         return (pct, raw, db)
 
     def set_gain(self, target: str, percent: int) -> tuple[int, float]:
-        """Set input gain (0-100) for target (input1, input2).
-        Returns (raw, dB) that was sent."""
-        cn = self._GAIN_TARGETS[target]
+        """Set target input gain [0, 100].
+        Returns (raw, dB) sent."""
+        assert 0 <= percent <= 100, "Gain outside range [0, 100]"
         db = self._gain_pct_to_db(percent)
-        raw = _db_to_usb(db)
-        self._set_fu_raw(_FU11, cn, raw)
-        return (raw if raw <= 0x7FFF else raw - 0x10000, db)
+        return self.set_gain_db(target, db)
 
     def set_gain_db(self, target: str, db: float) -> tuple[int, float]:
-        """Set input gain in dB (-8..+50) for target (input1, input2).
-        Returns (raw, dB) that was sent."""
+        """Set target input gain in dB [-8, 50].
+        Returns (raw, dB) sent."""
         cn = self._GAIN_TARGETS[target]
         db = max(_GAIN_DB_MIN, min(_GAIN_DB_MAX, db))
         raw = _db_to_usb(db)
@@ -253,14 +252,14 @@ class EVO4Controller:
     # --- Monitor Mix (Extension Unit 56) ---
     # Linear range: 0 = full input, 127 = full playback.
 
-    _EU56_WINDEX = 0x3800   # (EntityID=0x38 << 8) | Interface=0
-    _EU56_WVALUE = 0x0000   # (CS=0 << 8) | CN=0
+    _EU56_WINDEX = 0x3800  # (EntityID=0x38 << 8) | Interface=0
+    _EU56_WVALUE = 0x0000  # (CS=0 << 8) | CN=0
 
     # --- Full device status (raw bytes + decode) ---
 
     # Packed struct: vol (int16 USB Q8.8), gain_ch1, gain_ch2 (int16),
     #               mix_raw (0-127), in1_mute, in2_mute, out_mute, in1_ph, in2_ph (uint8)
-    _STATUS_FMT = '<hhhBBBBBB'  # 12 bytes total
+    _STATUS_FMT = "<hhhBBBBBB"  # 12 bytes total
 
     def get_status_raw(self) -> bytes:
         """Read all readable device state as a 12-byte packed struct.
@@ -271,13 +270,16 @@ class EVO4Controller:
         if not already_open:
             self._fd = kmod.open_device()
         try:
-            vol   = self._get_fu_raw(_FU10, 1)
+            vol = self._get_fu_raw(_FU10, 1)
             gain1 = self._get_fu_raw(_FU11, 1)
             gain2 = self._get_fu_raw(_FU11, 2)
             with self._device() as fd:
                 mix_raw = int.from_bytes(
-                    kmod.get_cur(fd, wValue=self._EU56_WVALUE,
-                                 wIndex=self._EU56_WINDEX, length=2)[:2], "little")
+                    kmod.get_cur(fd, wValue=self._EU56_WVALUE, wIndex=self._EU56_WINDEX, length=2)[
+                        :2
+                    ],
+                    "little",
+                )
             in1m = int(self.get_mute("input1"))
             in2m = int(self.get_mute("input2"))
             outm = int(self.get_mute("output"))
@@ -287,9 +289,9 @@ class EVO4Controller:
             if not already_open and self._fd is not None:
                 self._fd.close()
                 self._fd = None
-        return struct.pack(self._STATUS_FMT,
-                           vol, gain1, gain2,
-                           mix_raw, in1m, in2m, outm, in1p, in2p)
+        return struct.pack(
+            self._STATUS_FMT, vol, gain1, gain2, mix_raw, in1m, in2m, outm, in1p, in2p
+        )
 
     @staticmethod
     def decode_status(data: bytes) -> dict:
@@ -298,22 +300,23 @@ class EVO4Controller:
         The returned dict has the same format as evo4.config.snapshot() and
         can be passed directly to evo4.config.apply().
         """
-        vol_raw, gain1r, gain2r, mix_raw, in1m, in2m, outm, in1p, in2p = \
-            struct.unpack(EVO4Controller._STATUS_FMT, data)
+        vol_raw, gain1r, gain2r, mix_raw, in1m, in2m, outm, in1p, in2p = struct.unpack(
+            EVO4Controller._STATUS_FMT, data
+        )
         return {
             "monitor": round(mix_raw * 100 / 127),
             "output": {
                 "volume": EVO4Controller._vol_db_to_pct(_usb_to_db(vol_raw)),
-                "mute":   bool(outm),
+                "mute": bool(outm),
             },
             "input1": {
-                "gain":    EVO4Controller._gain_db_to_pct(_usb_to_db(gain1r)),
-                "mute":    bool(in1m),
+                "gain": EVO4Controller._gain_db_to_pct(_usb_to_db(gain1r)),
+                "mute": bool(in1m),
                 "phantom": bool(in1p),
             },
             "input2": {
-                "gain":    EVO4Controller._gain_db_to_pct(_usb_to_db(gain2r)),
-                "mute":    bool(in2m),
+                "gain": EVO4Controller._gain_db_to_pct(_usb_to_db(gain2r)),
+                "mute": bool(in2m),
                 "phantom": bool(in2p),
             },
         }
@@ -325,8 +328,7 @@ class EVO4Controller:
     def get_mix(self) -> int:
         """Get monitor mix ratio (0=input only, 100=playback only)."""
         with self._device() as fd:
-            data = kmod.get_cur(fd, wValue=self._EU56_WVALUE,
-                                     wIndex=self._EU56_WINDEX, length=2)
+            data = kmod.get_cur(fd, wValue=self._EU56_WVALUE, wIndex=self._EU56_WINDEX, length=2)
             raw = int.from_bytes(data[:2], "little")
             return round(raw * 100 / 127)
 
@@ -335,39 +337,41 @@ class EVO4Controller:
         with self._device() as fd:
             raw = max(0, min(127, round(ratio * 127 / 100)))
             data = raw.to_bytes(2, "little")
-            kmod.set_cur(fd, wValue=self._EU56_WVALUE,
-                              wIndex=self._EU56_WINDEX, data=data)
+            kmod.set_cur(fd, wValue=self._EU56_WVALUE, wIndex=self._EU56_WINDEX, data=data)
 
     # --- Mixer Matrix (Mixer Unit 60) ---
     # Single 6×2 loopback mixer. All CN 0-11 route to Loopback L/R.
     # Write-only (GET_CUR STALLs). Uses UAC2 Q8.8 dB values.
 
     def set_mixer_crosspoint(self, cn: int, db: float):
-        """Set a single MU60 cross-point gain. cn=0..11, db=-128..+6."""
+        """Set a single MU60 cross-point gain. cn=[0, 11], db=[-128, 6]."""
         if not 0 <= cn < _MIXER_MAX_CN:
-            raise ValueError(f"Cross-point CN must be 0..{_MIXER_MAX_CN - 1}, got {cn}")
+            raise ValueError(f"Cross-point CN must be [0, {_MIXER_MAX_CN - 1}], got {cn}")
         db = max(_MIXER_DB_MIN, min(_MIXER_DB_MAX, db))
         with self._device() as fd:
-            kmod.set_cur(fd, wValue=(_CS_MIXER << 8) | cn,
-                         wIndex=_MU60, data=_db_to_usb(db).to_bytes(2, "little"))
+            kmod.set_cur(
+                fd,
+                wValue=(_CS_MIXER << 8) | cn,
+                wIndex=_MU60,
+                data=_db_to_usb(db).to_bytes(2, "little"),
+            )
 
     def get_mixer_crosspoint(self, cn: int) -> float:
         """Try GET_CUR on MU60. Raises OSError (EPIPE/STALL) if write-only."""
         if not 0 <= cn < _MIXER_MAX_CN:
-            raise ValueError(f"Cross-point CN must be 0..{_MIXER_MAX_CN - 1}, got {cn}")
+            raise ValueError(f"Cross-point CN must be [0, {_MIXER_MAX_CN - 1}], got {cn}")
         with self._device() as fd:
-            data = kmod.get_cur(fd, wValue=(_CS_MIXER << 8) | cn,
-                                wIndex=_MU60, length=2)
+            data = kmod.get_cur(fd, wValue=(_CS_MIXER << 8) | cn, wIndex=_MU60, length=2)
             return _usb_to_db(int.from_bytes(data[:2], "little", signed=True))
 
     @staticmethod
     def _pan_to_lr_db(volume_db: float, pan: float) -> tuple[float, float]:
         """Convert volume + pan to (left_dB, right_dB).
-        pan: -100.0 (full left) to +100.0 (full right), 0.0 = center.
+        pan: -100.0 (full left) to 100.0 (full right), 0.0 = center.
         Uses equal-power pan law (cos/sin).
         """
         pan = max(-100.0, min(100.0, pan))
-        p = (pan + 100.0) / 200.0   # normalize to 0..1
+        p = (pan + 100.0) / 200.0  # normalize to [0, 1]
         angle = p * (math.pi / 2)
         l_lin = math.cos(angle)
         r_lin = math.sin(angle)
@@ -378,20 +382,20 @@ class EVO4Controller:
     def set_mixer_input(self, input_num: int, gain_db: float, pan: float = 0.0):
         """Route mic/line input to loopback mix with gain and pan.
         input_num: 1 or 2
-        gain_db: -128.0..+6.0, pan: -100.0..+100.0
+        gain_db: [-128.0, 6.0], pan: [-100.0, 100.0]
         Input1=in0 (CN 0,1), Input2=in1 (CN 2,3).
         """
         if input_num not in (1, 2):
             raise ValueError(f"input_num must be 1 or 2, got {input_num}")
         l_db, r_db = self._pan_to_lr_db(gain_db, pan)
         base = (input_num - 1) * _OUT_NUM_OUTPUTS  # input1 → CN 0; input2 → CN 2
-        self.set_mixer_crosspoint(base + 0, l_db)   # → Loopback L
-        self.set_mixer_crosspoint(base + 1, r_db)   # → Loopback R
+        self.set_mixer_crosspoint(base + 0, l_db)  # → Loopback L
+        self.set_mixer_crosspoint(base + 1, r_db)  # → Loopback R
 
     def set_mixer_output(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0):
         """Route Main Output (DAW playback CH1/2) to loopback mix.
-        volume_db: -128.0..+6.0
-        pan_l: pan for DAW L (-100..+100), pan_r: pan for DAW R
+        volume_db: [-128.0, 6.0]
+        pan_l: pan for DAW L [-100, 100], pan_r: pan for DAW R
         DAW_L=in2 (CN 4,5), DAW_R=in3 (CN 6,7).
         """
         l_db_l, r_db_l = self._pan_to_lr_db(volume_db, pan_l)  # DAW L → Loop L/R
@@ -403,13 +407,13 @@ class EVO4Controller:
 
     def set_mixer_loopback(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0):
         """Route Loopback Output (DAW playback CH3/4) to loopback mix.
-        volume_db: -128.0..+6.0
-        pan_l: pan for LoopOut L (-100..+100), pan_r: pan for LoopOut R
+        volume_db: [-128.0, 6.0]
+        pan_l: pan for LoopOut L [-100, 100], pan_r: pan for LoopOut R
         LoopOut_L=in4 (CN 8,9), LoopOut_R=in5 (CN 10,11).
         """
         l_db_l, r_db_l = self._pan_to_lr_db(volume_db, pan_l)  # DAW L → Loop L/R
         l_db_r, r_db_r = self._pan_to_lr_db(volume_db, pan_r)  # DAW R → Loop L/R
-        self.set_mixer_crosspoint(_LOOP_BASE_CN + 0, l_db_l)    # CN 8: DAW_L → Loop L
-        self.set_mixer_crosspoint(_LOOP_BASE_CN + 1, r_db_l)    # CN 9: DAW_L → Loop R
-        self.set_mixer_crosspoint(_LOOP_BASE_CN + 2, l_db_r)    # CN 10: DAW_R → Loop L
-        self.set_mixer_crosspoint(_LOOP_BASE_CN + 3, r_db_r)    # CN 11: DAW_R → Loop R
+        self.set_mixer_crosspoint(_LOOP_BASE_CN + 0, l_db_l)  # CN 8: DAW_L → Loop L
+        self.set_mixer_crosspoint(_LOOP_BASE_CN + 1, r_db_l)  # CN 9: DAW_L → Loop R
+        self.set_mixer_crosspoint(_LOOP_BASE_CN + 2, l_db_r)  # CN 10: DAW_R → Loop L
+        self.set_mixer_crosspoint(_LOOP_BASE_CN + 3, r_db_r)  # CN 11: DAW_R → Loop R

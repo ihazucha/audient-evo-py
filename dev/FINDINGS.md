@@ -39,7 +39,7 @@ use 2-byte (UAC2 standard).
 | 1 | Mute | 0xBB00 | 0xBB00 | 0xBB00 | 0xBB00 |
 | 2 | Volume | 0x0000 (0 dB) | 0x0000 (0 dB) | 0x8080 (-127.5 dB) | 0x8080 (-127.5 dB) |
 
-- Range: -127.00..0.00 dB (UAC2 16-bit signed, 1/256 dB steps)
+- Range: [-127.0, 0.0] dB (UAC2 16-bit signed, 1/256 dB steps)
 - Only CH1-2 respond to SET_CUR. CH3-4 fixed at defaults.
 
 ### FU11 — Input Gain (wIndex=0x0B00) — CONFIRMED
@@ -49,7 +49,7 @@ use 2-byte (UAC2 standard).
 | 1 | Mute | 0x0080 | 0x0080 | 0x0080 | 0x0080 |
 | 2 | Volume | varies | varies | 0x00F8 (-8 dB) | 0x00F8 (-8 dB) |
 
-- Range: -8.00..+50.00 dB
+- Range: [-8.0, 50.0] dB
 - Only CH1-2 respond. CH3-4 fixed at -8 dB.
 
 ### EU50 (wIndex=0x3200) — NOT PRESENT
