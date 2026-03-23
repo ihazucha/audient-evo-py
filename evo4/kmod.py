@@ -2,6 +2,7 @@
 
 import fcntl
 import struct
+from typing import BinaryIO
 
 # Must match struct evo4_ctrl_xfer in evo4_raw.c
 # Layout: u8 bRequestType, u8 bRequest, u16 wValue, u16 wIndex, u16 wLength, u8[256] data
@@ -24,7 +25,15 @@ REQ_CUR = 0x01  # SET_CUR / GET_CUR
 DEV_PATH = "/dev/evo4"
 
 
-def ctrl_transfer(fd, bRequestType, bRequest, wValue, wIndex, data=b"", length=None):
+def ctrl_transfer(
+    fd: BinaryIO,
+    bRequestType: int,
+    bRequest: int,
+    wValue: int,
+    wIndex: int,
+    data: bytes = b"",
+    length: int | None = None,
+) -> bytes | None:
     """Send a USB control transfer via the evo4_raw kernel module.
 
     For SET (OUT) transfers, pass data bytes. length is inferred from data.
@@ -50,16 +59,18 @@ def ctrl_transfer(fd, bRequestType, bRequest, wValue, wIndex, data=b"", length=N
     return None
 
 
-def open_device():
+def open_device() -> BinaryIO:
     """Open /dev/evo4 for ioctl access. Use as context manager."""
     return open(DEV_PATH, "rb")
 
 
-def get_cur(fd, wValue, wIndex, length):
+def get_cur(fd: BinaryIO, wValue: int, wIndex: int, length: int) -> bytes:
     """GET_CUR request — read current value from a USB Audio unit."""
-    return ctrl_transfer(fd, REQTYPE_GET, REQ_CUR, wValue, wIndex, length=length)
+    result = ctrl_transfer(fd, REQTYPE_GET, REQ_CUR, wValue, wIndex, length=length)
+    assert result is not None
+    return result
 
 
-def set_cur(fd, wValue, wIndex, data):
+def set_cur(fd: BinaryIO, wValue: int, wIndex: int, data: bytes) -> None:
     """SET_CUR request — write a value to a USB Audio unit."""
     ctrl_transfer(fd, REQTYPE_SET, REQ_CUR, wValue, wIndex, data=data)

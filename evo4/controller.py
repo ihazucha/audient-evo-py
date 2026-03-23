@@ -123,7 +123,7 @@ class EVO4Controller:
             data = kmod.get_cur(fd, wValue=(_CS_VOLUME << 8) | cn, wIndex=unit, length=2)
             return int.from_bytes(data[:2], "little", signed=True)
 
-    def _set_fu_raw(self, unit: int, cn: int, raw: int):
+    def _set_fu_raw(self, unit: int, cn: int, raw: int) -> None:
         """Write raw 16-bit USB value to a Feature Unit channel."""
         with self._device() as fd:
             kmod.set_cur(
@@ -147,7 +147,8 @@ class EVO4Controller:
     def set_volume(self, percent: int) -> tuple[int, float]:
         """Set output volume (0-100) on both channels.
         Returns (raw, dB) sent."""
-        assert 0 <= percent <= 100, "Volume outside range [0, 100]"
+        if not 0 <= percent <= 100:
+            raise ValueError(f"Volume {percent} outside range [0, 100]")
         db = self._vol_pct_to_db(percent)
         return self.set_volume_db(db)
 
@@ -191,7 +192,8 @@ class EVO4Controller:
     def set_gain(self, target: str, percent: int) -> tuple[int, float]:
         """Set target input gain [0, 100].
         Returns (raw, dB) sent."""
-        assert 0 <= percent <= 100, "Gain outside range [0, 100]"
+        if not 0 <= percent <= 100:
+            raise ValueError(f"Gain {percent} outside range [0, 100]")
         db = self._gain_pct_to_db(percent)
         return self.set_gain_db(target, db)
 
@@ -220,7 +222,7 @@ class EVO4Controller:
             data = kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=4)
             return int.from_bytes(data[:4], "little") == 1
 
-    def set_mute(self, target: str, muted: bool):
+    def set_mute(self, target: str, muted: bool) -> None:
         """Set mute state for target (input1, input2, output)."""
         wValue, wIndex = self._MUTE_TARGETS[target]
         with self._device() as fd:
@@ -242,7 +244,7 @@ class EVO4Controller:
             data = kmod.get_cur(fd, wValue=wValue, wIndex=wIndex, length=4)
             return int.from_bytes(data[:4], "little") == 1
 
-    def set_phantom(self, target: str, enabled: bool):
+    def set_phantom(self, target: str, enabled: bool) -> None:
         """Set 48V phantom power for target (input1, input2)."""
         wValue, wIndex = self._PHANTOM_TARGETS[target]
         with self._device() as fd:
@@ -321,7 +323,7 @@ class EVO4Controller:
             },
         }
 
-    def _require_kmod(self):
+    def _require_kmod(self) -> None:
         if not exists("/dev/evo4"):
             raise RuntimeError("evo4_raw kernel module not loaded (/dev/evo4 not found)")
 
@@ -332,7 +334,7 @@ class EVO4Controller:
             raw = int.from_bytes(data[:2], "little")
             return round(raw * 100 / 127)
 
-    def set_mix(self, ratio: int):
+    def set_mix(self, ratio: int) -> None:
         """Set monitor mix ratio (0=input only, 100=playback only)."""
         with self._device() as fd:
             raw = max(0, min(127, round(ratio * 127 / 100)))
@@ -343,7 +345,7 @@ class EVO4Controller:
     # Single 6×2 loopback mixer. All CN 0-11 route to Loopback L/R.
     # Write-only (GET_CUR STALLs). Uses UAC2 Q8.8 dB values.
 
-    def set_mixer_crosspoint(self, cn: int, db: float):
+    def set_mixer_crosspoint(self, cn: int, db: float) -> None:
         """Set a single MU60 cross-point gain. cn=[0, 11], db=[-128, 6]."""
         if not 0 <= cn < _MIXER_MAX_CN:
             raise ValueError(f"Cross-point CN must be [0, {_MIXER_MAX_CN - 1}], got {cn}")
@@ -379,7 +381,7 @@ class EVO4Controller:
         r_db = volume_db + (20 * math.log10(r_lin) if r_lin > 1e-10 else _MIXER_DB_MIN)
         return (max(_MIXER_DB_MIN, l_db), max(_MIXER_DB_MIN, r_db))
 
-    def set_mixer_input(self, input_num: int, gain_db: float, pan: float = 0.0):
+    def set_mixer_input(self, input_num: int, gain_db: float, pan: float = 0.0) -> None:
         """Route mic/line input to loopback mix with gain and pan.
         input_num: 1 or 2
         gain_db: [-128.0, 6.0], pan: [-100.0, 100.0]
@@ -392,7 +394,7 @@ class EVO4Controller:
         self.set_mixer_crosspoint(base + 0, l_db)  # → Loopback L
         self.set_mixer_crosspoint(base + 1, r_db)  # → Loopback R
 
-    def set_mixer_output(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0):
+    def set_mixer_output(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0) -> None:
         """Route Main Output (DAW playback CH1/2) to loopback mix.
         volume_db: [-128.0, 6.0]
         pan_l: pan for DAW L [-100, 100], pan_r: pan for DAW R
@@ -405,7 +407,7 @@ class EVO4Controller:
         self.set_mixer_crosspoint(3 * _OUT_NUM_OUTPUTS + 0, l_db_r)  # CN 6: DAW_R → Loop L
         self.set_mixer_crosspoint(3 * _OUT_NUM_OUTPUTS + 1, r_db_r)  # CN 7: DAW_R → Loop R
 
-    def set_mixer_loopback(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0):
+    def set_mixer_loopback(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0) -> None:
         """Route Loopback Output (DAW playback CH3/4) to loopback mix.
         volume_db: [-128.0, 6.0]
         pan_l: pan for LoopOut L [-100, 100], pan_r: pan for LoopOut R
