@@ -32,9 +32,10 @@ _VOL_DB_MIN = -96.0
 _VOL_DB_MAX = 0.0
 _VOL_CURVE_N = math.log(1.0 - 20.0 / 96.0) / math.log(0.5)
 
-# Gain (FU11): [-8.0, 50.0] dB
+# Gain (FU11): [-8.0, 50.0] dB, device quantizes to 1 dB steps
 _GAIN_DB_MIN = -8.0
 _GAIN_DB_MAX = 50.0
+_GAIN_DB_STEP = 1.0
 
 _NUM_CHANNELS = 2  # CH1 and CH2 (UAC descriptor reports 4 but CH3-4 are internal)
 
@@ -167,10 +168,12 @@ class EVO4Controller:
     @staticmethod
     def _gain_pct_to_db(percent: int) -> float:
         p = max(0, min(100, percent)) / 100.0
-        return _GAIN_DB_MIN + (_GAIN_DB_MAX - _GAIN_DB_MIN) * p
+        db = _GAIN_DB_MIN + (_GAIN_DB_MAX - _GAIN_DB_MIN) * p
+        return round(db / _GAIN_DB_STEP) * _GAIN_DB_STEP
 
     @staticmethod
     def _gain_db_to_pct(db: float) -> int:
+        db = round(db / _GAIN_DB_STEP) * _GAIN_DB_STEP
         db = max(_GAIN_DB_MIN, min(_GAIN_DB_MAX, db))
         return round(100.0 * (db - _GAIN_DB_MIN) / (_GAIN_DB_MAX - _GAIN_DB_MIN))
 
@@ -296,11 +299,16 @@ class EVO4Controller:
         )
 
     @staticmethod
-    def decode_status(data: bytes) -> dict:
-        """Decode a raw status blob into a config dict.
+    def _snap_gain_db(db: float) -> float:
+        """Snap dB to device's gain grid."""
+        return round(db / _GAIN_DB_STEP) * _GAIN_DB_STEP
 
-        The returned dict has the same format as evo4.config.snapshot() and
-        can be passed directly to evo4.config.apply().
+    @staticmethod
+    def decode_status(data: bytes) -> dict:
+        """Decode a raw status blob into a state dict.
+
+        Values are in device-native units: dB for volume/gain, 0-100 for
+        monitor mix. Use evo4.config.snapshot() for pct-based config dicts.
         """
         vol_raw, gain1r, gain2r, mix_raw, in1m, in2m, outm, in1p, in2p = struct.unpack(
             EVO4Controller._STATUS_FMT, data
@@ -308,16 +316,16 @@ class EVO4Controller:
         return {
             "monitor": round(mix_raw * 100 / 127),
             "output": {
-                "volume": EVO4Controller._vol_db_to_pct(_usb_to_db(vol_raw)),
+                "volume": _usb_to_db(vol_raw),
                 "mute": bool(outm),
             },
             "input1": {
-                "gain": EVO4Controller._gain_db_to_pct(_usb_to_db(gain1r)),
+                "gain": EVO4Controller._snap_gain_db(_usb_to_db(gain1r)),
                 "mute": bool(in1m),
                 "phantom": bool(in1p),
             },
             "input2": {
-                "gain": EVO4Controller._gain_db_to_pct(_usb_to_db(gain2r)),
+                "gain": EVO4Controller._snap_gain_db(_usb_to_db(gain2r)),
                 "mute": bool(in2m),
                 "phantom": bool(in2p),
             },
@@ -394,7 +402,9 @@ class EVO4Controller:
         self.set_mixer_crosspoint(base + 0, l_db)  # → Loopback L
         self.set_mixer_crosspoint(base + 1, r_db)  # → Loopback R
 
-    def set_mixer_output(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0) -> None:
+    def set_mixer_output(
+        self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0
+    ) -> None:
         """Route Main Output (DAW playback CH1/2) to loopback mix.
         volume_db: [-128.0, 6.0]
         pan_l: pan for DAW L [-100, 100], pan_r: pan for DAW R
@@ -407,7 +417,9 @@ class EVO4Controller:
         self.set_mixer_crosspoint(3 * _OUT_NUM_OUTPUTS + 0, l_db_r)  # CN 6: DAW_R → Loop L
         self.set_mixer_crosspoint(3 * _OUT_NUM_OUTPUTS + 1, r_db_r)  # CN 7: DAW_R → Loop R
 
-    def set_mixer_loopback(self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0) -> None:
+    def set_mixer_loopback(
+        self, volume_db: float, pan_l: float = -100.0, pan_r: float = 100.0
+    ) -> None:
         """Route Loopback Output (DAW playback CH3/4) to loopback mix.
         volume_db: [-128.0, 6.0]
         pan_l: pan for LoopOut L [-100, 100], pan_r: pan for LoopOut R
