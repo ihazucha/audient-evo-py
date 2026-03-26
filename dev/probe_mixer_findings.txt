@@ -1,4 +1,0 @@
-CN 2: input2 -> loopback input (left)
-CN 3, CN 14: Input2 -> loopback input (right)
-CN 4, 6: main output -> loopback input (left)
-CN 5, 7, 16, 18: main output -> loopback input (right)
