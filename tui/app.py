@@ -31,6 +31,58 @@ RANGES = {
     "input2": (-8.0, 50.0, 1.0),
 }
 
+# -- Mixer (MU60) --
+MIXER_DB_MIN, MIXER_DB_MAX, MIXER_DB_STEP = -128.0, 6.0, 1.0
+PAN_MIN, PAN_MAX, PAN_STEP = -100.0, 100.0, 5.0
+
+# (key, label, color, sliders[])  slider: (param, label, min, max, step)
+MIXER_SECTIONS = [
+    (
+        "input1",
+        "INPUT 1",
+        C_BLUE,
+        [
+            ("volume", "Vol", MIXER_DB_MIN, MIXER_DB_MAX, MIXER_DB_STEP),
+            ("pan", "Pan", PAN_MIN, PAN_MAX, PAN_STEP),
+        ],
+    ),
+    (
+        "input2",
+        "INPUT 2",
+        C_BLUE,
+        [
+            ("volume", "Vol", MIXER_DB_MIN, MIXER_DB_MAX, MIXER_DB_STEP),
+            ("pan", "Pan", PAN_MIN, PAN_MAX, PAN_STEP),
+        ],
+    ),
+    (
+        "main",
+        "MAIN OUTPUT",
+        C_GREEN,
+        [
+            ("volume", "Vol", MIXER_DB_MIN, MIXER_DB_MAX, MIXER_DB_STEP),
+            ("pan_l", "Pan L", PAN_MIN, PAN_MAX, PAN_STEP),
+            ("pan_r", "Pan R", PAN_MIN, PAN_MAX, PAN_STEP),
+        ],
+    ),
+    (
+        "loopback",
+        "LOOPBACK",
+        C_YELLOW,
+        [
+            ("volume", "Vol", MIXER_DB_MIN, MIXER_DB_MAX, MIXER_DB_STEP),
+            ("pan_l", "Pan L", PAN_MIN, PAN_MAX, PAN_STEP),
+            ("pan_r", "Pan R", PAN_MIN, PAN_MAX, PAN_STEP),
+        ],
+    ),
+]
+
+# Flat index for cursor navigation: (section_idx, slider_idx)
+MIXER_FLAT = []
+for _si, (_, _, _, _slds) in enumerate(MIXER_SECTIONS):
+    for _sli in range(len(_slds)):
+        MIXER_FLAT.append((_si, _sli))
+
 
 class EvoTUI:
     def __init__(self, evo: EVO4Controller):
@@ -40,12 +92,20 @@ class EvoTUI:
         self.status_err = False
         self.num_buf = ""
         self._mode = "normal"
+        self._window = "controls"
         self._file_list = []
         self._file_cursor = 0
         self._file_scroll = 0
         self._file_input = ""
         self._slider_map = []
         self._box_attr = 0
+        self._mixer_cursor = 0
+        self._mixer_state = {
+            "input1": {"volume": -128.0, "pan": 0.0},
+            "input2": {"volume": -128.0, "pan": 0.0},
+            "main": {"volume": -128.0, "pan_l": -100.0, "pan_r": 100.0},
+            "loopback": {"volume": -128.0, "pan_l": -100.0, "pan_r": 100.0},
+        }
         self._sync()
 
     # -- state --
@@ -87,7 +147,13 @@ class EvoTUI:
             idx = self.cursor
         return ELEMENTS[idx][0] != "monitor"
 
-    # -- actions --
+    def _current_unit(self):
+        if self._window == "controls":
+            return "dB" if self._is_db() else "%"
+        si, sli = MIXER_FLAT[self._mixer_cursor]
+        return "dB" if MIXER_SECTIONS[si][3][sli][0] == "volume" else ""
+
+    # -- controls actions --
 
     def _set_val(self, val):
         key, sub = ELEMENTS[self.cursor][:2]
@@ -129,6 +195,51 @@ class EvoTUI:
         try:
             self.evo.set_phantom(key, not self.state[key]["phantom"])
             self.state[key]["phantom"] = not self.state[key]["phantom"]
+        except OSError as e:
+            self._set_status(f"Error: {e}", err=True)
+
+    # -- mixer actions --
+
+    def _mixer_val(self, flat_idx=None):
+        if flat_idx is None:
+            flat_idx = self._mixer_cursor
+        si, sli = MIXER_FLAT[flat_idx]
+        key = MIXER_SECTIONS[si][0]
+        param = MIXER_SECTIONS[si][3][sli][0]
+        return self._mixer_state[key][param]
+
+    def _mixer_frac(self, flat_idx):
+        si, sli = MIXER_FLAT[flat_idx]
+        _, _, _, sliders = MIXER_SECTIONS[si]
+        _, _, lo, hi, _ = sliders[sli]
+        val = self._mixer_val(flat_idx)
+        return max(0.0, min(1.0, (val - lo) / (hi - lo)))
+
+    def _mixer_set_val(self, val):
+        si, sli = MIXER_FLAT[self._mixer_cursor]
+        key, _, _, sliders = MIXER_SECTIONS[si]
+        param, _, lo, hi, _ = sliders[sli]
+        val = max(lo, min(hi, val))
+        self._mixer_state[key][param] = val
+        self._apply_mixer(key)
+
+    def _mixer_adjust(self, delta):
+        si, sli = MIXER_FLAT[self._mixer_cursor]
+        _, _, _, sliders = MIXER_SECTIONS[si]
+        _, _, _, _, step = sliders[sli]
+        self._mixer_set_val(self._mixer_val() + delta * step)
+
+    def _apply_mixer(self, key):
+        try:
+            s = self._mixer_state[key]
+            if key == "input1":
+                self.evo.set_mixer_input(1, s["volume"], s["pan"])
+            elif key == "input2":
+                self.evo.set_mixer_input(2, s["volume"], s["pan"])
+            elif key == "main":
+                self.evo.set_mixer_output(s["volume"], s["pan_l"], s["pan_r"])
+            elif key == "loopback":
+                self.evo.set_mixer_loopback(s["volume"], s["pan_l"], s["pan_r"])
         except OSError as e:
             self._set_status(f"Error: {e}", err=True)
 
@@ -254,11 +365,26 @@ class EvoTUI:
             fill_attr = curses.color_pair(C_RED) | (curses.A_BOLD if sel else curses.A_DIM)
         else:
             fill_attr = curses.color_pair(color) | (curses.A_BOLD if sel else curses.A_DIM)
-        empty_attr = curses.color_pair(C_WHITE) | curses.A_DIM
+        empty_attr = curses.color_pair(C_WHITE) | (curses.A_NORMAL if sel else curses.A_DIM)
         if filled:
             self._safe(scr, row, x, "\u2588" * filled, fill_attr)
         if filled < SLIDER_W:
             self._safe(scr, row, x + filled, "\u2588" * (SLIDER_W - filled), empty_attr)
+
+    def _dual_slider(self, scr, row, x, frac, sel=False, color=C_GREEN, fill_char="\u2588"):
+        """Dual-side slider: fills from both outer edges inward.
+        frac=0.5 -> both halves half-full; frac<0.5 -> more left; frac>0.5 -> more right."""
+        half = SLIDER_W // 2
+        left_fill = max(0, min(half, round((1.0 - frac) * half)))
+        right_fill = half - left_fill
+        fill_attr = curses.color_pair(color) | (curses.A_BOLD if sel else curses.A_DIM)
+        empty_attr = curses.color_pair(C_WHITE) | (curses.A_NORMAL if sel else curses.A_DIM)
+        self._safe(scr, row, x, "\u2588" * SLIDER_W, empty_attr)
+        if left_fill > 0:
+            self._safe(scr, row, x + half - left_fill, fill_char * left_fill, fill_attr)
+        if right_fill > 0:
+            self._safe(scr, row, x + half, fill_char * right_fill, fill_attr)
+        self._safe(scr, row, x + half, "\u2502", curses.A_BOLD)
 
     def _mute_ind(self, scr, row, x, key):
         if self.state[key]["mute"]:
@@ -272,7 +398,19 @@ class EvoTUI:
         else:
             self._safe(scr, row, x, "[48v]", curses.A_DIM)
 
-    # -- section drawing --
+    # -- tab bar --
+
+    def _draw_tab_bar(self, scr, row, cx):
+        if self._window == "controls":
+            ctrl_attr = curses.A_REVERSE | curses.A_BOLD
+            mix_attr = curses.A_DIM
+        else:
+            ctrl_attr = curses.A_DIM
+            mix_attr = curses.A_REVERSE | curses.A_BOLD
+        self._safe(scr, row, cx + 1, " CONTROLS ", ctrl_attr)
+        self._safe(scr, row, cx + 12, " MIXER ", mix_attr)
+
+    # -- section drawing (controls) --
 
     def _draw_section(self, scr, row, cx, idx):
         key, sub, label, color = ELEMENTS[idx]
@@ -285,7 +423,10 @@ class EvoTUI:
         row += 1
 
         self._box_side(scr, row, cx)
-        self._hslider(scr, row, cx + SLIDER_OFF, frac, muted, active, color)
+        if sub is None:
+            self._dual_slider(scr, row, cx + SLIDER_OFF, frac, active, color)
+        else:
+            self._hslider(scr, row, cx + SLIDER_OFF, frac, muted, active, color)
         self._slider_map.append((row, cx + SLIDER_OFF, SLIDER_W, idx))
         row += 1
 
@@ -307,6 +448,47 @@ class EvoTUI:
             if self._has_mute(idx):
                 self._mute_ind(scr, row, cx + BOX_IW - 3, key)
         row += 1
+
+        self._box_bot(scr, row, cx)
+        return row + 1
+
+    # -- mixer section drawing --
+
+    def _draw_mixer_section(self, scr, row, cx, sec_idx, flat_start):
+        key, label, color, sliders = MIXER_SECTIONS[sec_idx]
+        any_active = any(self._mixer_cursor == flat_start + i for i in range(len(sliders)))
+
+        self._box_top(scr, row, cx, label, any_active)
+        row += 1
+
+        for i, (param, plabel, lo, hi, step) in enumerate(sliders):
+            flat_idx = flat_start + i
+            sel = self._mixer_cursor == flat_idx
+            val = self._mixer_state[key][param]
+            is_pan = param.startswith("pan")
+
+            if is_pan and i > 0 and not sliders[i - 1][0].startswith("pan"):
+                self._safe(scr, row, cx, "\u251c" + "\u2500" * BOX_IW + "\u2524", self._box_attr)
+                row += 1
+
+            self._box_side(scr, row, cx)
+            if is_pan:
+                pan_frac = (val - PAN_MIN) / (PAN_MAX - PAN_MIN)
+                self._dual_slider(scr, row, cx + SLIDER_OFF, pan_frac, sel, color, fill_char="\u2593")
+            else:
+                frac = self._mixer_frac(flat_idx)
+                self._hslider(scr, row, cx + SLIDER_OFF, frac, False, sel, color)
+            self._slider_map.append((row, cx + SLIDER_OFF, SLIDER_W, flat_idx))
+            row += 1
+
+            self._box_side(scr, row, cx)
+            if is_pan:
+                val_str = f"{plabel:5s} {val:+6.0f}"
+            else:
+                val_str = f"{plabel:5s} {val:+7.1f} dB"
+            val_attr = curses.A_BOLD if sel else 0
+            self._safe(scr, row, cx + SLIDER_OFF, val_str, val_attr)
+            row += 1
 
         self._box_bot(scr, row, cx)
         return row + 1
@@ -390,14 +572,30 @@ class EvoTUI:
         h, w = scr.getmaxyx()
         self._slider_map = []
 
-        MIN_H, MIN_W = 21, BOX_IW + 4
-        if h < MIN_H or w < MIN_W:
-            self._safe(scr, 0, 0, f"Terminal too small ({w}x{h}, need {MIN_W}x{MIN_H})")
+        min_w = BOX_IW + 4
+        if self._window == "controls":
+            total_h = 23
+        else:
+            total_h = 39
+
+        if h < total_h or w < min_w:
+            self._safe(scr, 0, 0, f"Terminal too small ({w}x{h}, need {min_w}x{total_h})")
             return
 
         cx = (w - (BOX_IW + 2)) // 2
-        row = max(0, (h - MIN_H) // 2)
+        row = max(0, (h - total_h) // 2)
 
+        self._draw_tab_bar(scr, row, cx)
+        row += 2
+
+        if self._window == "controls":
+            row = self._draw_controls_body(scr, row, cx)
+        else:
+            row = self._draw_mixer_body(scr, row, cx)
+
+        self._draw_status_bar(scr, row, cx)
+
+    def _draw_controls_body(self, scr, row, cx):
         for idx in range(len(ELEMENTS)):
             row = self._draw_section(scr, row, cx, idx)
             if idx < len(ELEMENTS) - 1:
@@ -416,34 +614,102 @@ class EvoTUI:
             scr,
             row,
             cx + 1,
-            "s:save  o:load  r:refresh  q:quit",
+            "s:save  o:load  Tab:mixer  q:quit",
             curses.color_pair(C_WHITE) | curses.A_DIM,
         )
         row += 1
+        return row
 
-        if self.status or self.num_buf:
-            self._box_attr = curses.color_pair(C_WHITE) | curses.A_DIM
-            self._safe(scr, row, cx, "\u250c" + "\u2500" * BOX_IW + "\u2510", self._box_attr)
-            row += 1
-            self._box_side(scr, row, cx)
-            if self.num_buf:
-                unit = "dB" if self._is_db() else "%"
-                self._safe(
-                    scr,
-                    row,
-                    cx + SLIDER_OFF,
-                    f"set {self.num_buf}_ {unit} (Enter=confirm  Esc=cancel)",
-                    curses.color_pair(C_YELLOW),
-                )
-            else:
-                attr = (
-                    curses.color_pair(C_RED) | curses.A_BOLD
-                    if self.status_err
-                    else curses.color_pair(C_YELLOW)
-                )
-                self._safe(scr, row, cx + SLIDER_OFF, self.status, attr)
-            row += 1
-            self._box_bot_labeled(scr, row, cx, "STATUS")
+    def _draw_mixer_body(self, scr, row, cx):
+        flat_start = 0
+        for sec_idx, (_, _, _, sliders) in enumerate(MIXER_SECTIONS):
+            row = self._draw_mixer_section(scr, row, cx, sec_idx, flat_start)
+            flat_start += len(sliders)
+            if sec_idx < len(MIXER_SECTIONS) - 1:
+                row += 1
+
+        si, sli = MIXER_FLAT[self._mixer_cursor]
+        param = MIXER_SECTIONS[si][3][sli][0]
+        if param == "volume":
+            help1 = "j/k:move  h/l:\xb11dB (H/L\xb15dB)"
+        else:
+            help1 = "j/k:move  h/l:\xb15 (H/L\xb125)"
+        self._safe(scr, row, cx + 1, help1, curses.color_pair(C_WHITE) | curses.A_DIM)
+        row += 1
+
+        self._safe(
+            scr,
+            row,
+            cx + 1,
+            "Tab:controls  q:quit",
+            curses.color_pair(C_WHITE) | curses.A_DIM,
+        )
+        row += 1
+        return row
+
+    def _draw_status_bar(self, scr, row, cx):
+        if not self.status and not self.num_buf:
+            return
+        self._box_attr = curses.color_pair(C_WHITE) | curses.A_DIM
+        self._safe(scr, row, cx, "\u250c" + "\u2500" * BOX_IW + "\u2510", self._box_attr)
+        row += 1
+        self._box_side(scr, row, cx)
+        if self.num_buf:
+            unit = self._current_unit()
+            self._safe(
+                scr,
+                row,
+                cx + SLIDER_OFF,
+                f"set {self.num_buf}_ {unit} (Enter=confirm  Esc=cancel)",
+                curses.color_pair(C_YELLOW),
+            )
+        else:
+            attr = (
+                curses.color_pair(C_RED) | curses.A_BOLD
+                if self.status_err
+                else curses.color_pair(C_YELLOW)
+            )
+            self._safe(scr, row, cx + SLIDER_OFF, self.status, attr)
+        row += 1
+        self._box_bot_labeled(scr, row, cx, "STATUS")
+
+    # -- key handlers --
+
+    def _controls_key(self, key):
+        if key == ord("j"):
+            self.cursor = (self.cursor + 1) % len(ELEMENTS)
+        elif key == ord("k"):
+            self.cursor = (self.cursor - 1) % len(ELEMENTS)
+        elif key == ord("h"):
+            self._adjust(-1)
+        elif key == ord("l"):
+            self._adjust(1)
+        elif key == ord("H"):
+            self._adjust(-5)
+        elif key == ord("L"):
+            self._adjust(5)
+        elif key == ord("m"):
+            self._toggle_mute()
+        elif key == ord("p"):
+            self._toggle_phantom()
+        elif key == ord("s"):
+            self._enter_save_mode()
+        elif key == ord("o"):
+            self._enter_load_mode()
+
+    def _mixer_key(self, key):
+        if key == ord("j"):
+            self._mixer_cursor = (self._mixer_cursor + 1) % len(MIXER_FLAT)
+        elif key == ord("k"):
+            self._mixer_cursor = (self._mixer_cursor - 1) % len(MIXER_FLAT)
+        elif key == ord("h"):
+            self._mixer_adjust(-1)
+        elif key == ord("l"):
+            self._mixer_adjust(1)
+        elif key == ord("H"):
+            self._mixer_adjust(-5)
+        elif key == ord("L"):
+            self._mixer_adjust(5)
 
     # -- event loop --
 
@@ -464,8 +730,10 @@ class EvoTUI:
             curses.init_pair(i, color, -1)
         curses.set_escdelay(25)
         curses.mousemask(curses.ALL_MOUSE_EVENTS)
+        scr.timeout(20)
 
         while True:
+            self._sync()
             self._draw(scr)
             scr.refresh()
             key = scr.getch()
@@ -476,26 +744,19 @@ class EvoTUI:
 
             if key == ord("q"):
                 break
-            elif key == ord("j"):
-                self.cursor = (self.cursor + 1) % len(ELEMENTS)
-            elif key == ord("k"):
-                self.cursor = (self.cursor - 1) % len(ELEMENTS)
-            elif key == ord("h"):
-                self._adjust(-1)
-            elif key == ord("l"):
-                self._adjust(1)
-            elif key == ord("H"):
-                self._adjust(-5)
-            elif key == ord("L"):
-                self._adjust(5)
-            elif key == ord("m"):
-                self._toggle_mute()
-            elif key == ord("p"):
-                self._toggle_phantom()
+            elif key == 9:  # Tab
+                self._window = "mixer" if self._window == "controls" else "controls"
+                self.num_buf = ""
+            elif key == curses.KEY_RESIZE:
+                scr.clear()
             elif key == 10:  # Enter
                 if self.num_buf:
                     try:
-                        self._set_val(float(self.num_buf))
+                        val = float(self.num_buf)
+                        if self._window == "controls":
+                            self._set_val(val)
+                        else:
+                            self._mixer_set_val(val)
                     except ValueError:
                         pass
                     self.num_buf = ""
@@ -507,15 +768,10 @@ class EvoTUI:
                 self.num_buf += "."
             elif 48 <= key <= 57:  # 0-9
                 self.num_buf += chr(key)
-            elif key == ord("r"):
-                self._sync()
-                self._set_status("Refreshed")
-            elif key == ord("s"):
-                self._enter_save_mode()
-            elif key == ord("o"):
-                self._enter_load_mode()
-            elif key == curses.KEY_RESIZE:
-                scr.clear()
+            elif self._window == "controls":
+                self._controls_key(key)
+            else:
+                self._mixer_key(key)
 
 
 def main():
