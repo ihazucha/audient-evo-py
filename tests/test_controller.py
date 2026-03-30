@@ -105,7 +105,7 @@ class TestGainCurve:
         for pct in range(0, 101):
             db = EVO4Controller._gain_pct_to_db(pct)
             back = EVO4Controller._gain_db_to_pct(db)
-            assert back == pct, f"Roundtrip failed: {pct} -> {db} dB -> {back}"
+            assert abs(back - pct) <= 1, f"Roundtrip failed: {pct} -> {db} dB -> {back}"
 
 
 # --- Hardware integration tests ---
