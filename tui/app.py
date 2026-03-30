@@ -3,7 +3,12 @@
 import curses
 import sys
 
-from evo4.controller import EVO4Controller
+from evo4.controller import (
+    EVO4Controller,
+    _VOL_DB_MIN, _VOL_DB_MAX,
+    _GAIN_DB_MIN, _GAIN_DB_MAX,
+    _MIXER_DB_MIN, _MIXER_DB_MAX,
+)
 from evo4 import config as cfg
 
 C_GREEN, C_RED, C_CYAN, C_YELLOW, C_WHITE, C_BLUE = range(1, 7)
@@ -14,81 +19,51 @@ SLIDER_OFF = 2
 PICKER_LIST_H = 6
 
 # Focusable elements: (state_key, value_key, section_label, slider_color)
-# state_key indexes into decode_status() dict
-# value_key is the sub-key (None for top-level like "monitor")
 ELEMENTS = [
-    ("monitor", None, "MONITOR", C_CYAN),
-    ("output", "volume", "OUTPUT", C_GREEN),
-    ("input1", "gain", "INPUT 1", C_BLUE),
-    ("input2", "gain", "INPUT 2", C_BLUE),
+    ("monitor", None,     "MONITOR", C_CYAN),
+    ("output",  "volume", "OUTPUT",  C_GREEN),
+    ("input1",  "gain",   "INPUT 1", C_BLUE),
+    ("input2",  "gain",   "INPUT 2", C_BLUE),
 ]
 
-# Value ranges: (min, max, step) - dB for volume/gain, % for monitor
+# Value ranges: (min, max, step)
 RANGES = {
     "monitor": (0, 100, 1),
-    "output": (-96.0, 0.0, 1.0),
-    "input1": (-8.0, 50.0, 1.0),
-    "input2": (-8.0, 50.0, 1.0),
+    "output":  (_VOL_DB_MIN,  _VOL_DB_MAX,  1.0),
+    "input1":  (_GAIN_DB_MIN, _GAIN_DB_MAX, 1.0),
+    "input2":  (_GAIN_DB_MIN, _GAIN_DB_MAX, 1.0),
 }
 
-# -- Mixer (MU60) --
-MIXER_DB_MIN, MIXER_DB_MAX, MIXER_DB_STEP = -128.0, 6.0, 1.0
 PAN_MIN, PAN_MAX, PAN_STEP = -100.0, 100.0, 5.0
-
-# Mixer layout constants
-MIXER_SECTION_IW = 15  # inner width of each section column
+MIXER_SECTION_IW = 15
 MIXER_PAN_HALF = 7  # half-width of narrow pan slider (total = 2*HALF+1 = 15)
 
 # (key, label, color, sliders[])  slider: (param, label, min, max, step)
-# Params ordered: pan(s) first, volume last
 MIXER_SECTIONS = [
-    (
-        "input1",
-        "INPUT 1",
-        C_BLUE,
-        [
-            ("pan", "Pan", PAN_MIN, PAN_MAX, PAN_STEP),
-            ("volume", "Vol", MIXER_DB_MIN, MIXER_DB_MAX, MIXER_DB_STEP),
-        ],
-    ),
-    (
-        "input2",
-        "INPUT 2",
-        C_BLUE,
-        [
-            ("pan", "Pan", PAN_MIN, PAN_MAX, PAN_STEP),
-            ("volume", "Vol", MIXER_DB_MIN, MIXER_DB_MAX, MIXER_DB_STEP),
-        ],
-    ),
-    (
-        "main",
-        "MAIN OUT",
-        C_GREEN,
-        [
-            ("pan_l", "Pan L", PAN_MIN, PAN_MAX, PAN_STEP),
-            ("pan_r", "Pan R", PAN_MIN, PAN_MAX, PAN_STEP),
-            ("volume", "Vol", MIXER_DB_MIN, MIXER_DB_MAX, MIXER_DB_STEP),
-        ],
-    ),
-    (
-        "loopback",
-        "LOOPBACK",
-        C_YELLOW,
-        [
-            ("pan_l", "Pan L", PAN_MIN, PAN_MAX, PAN_STEP),
-            ("pan_r", "Pan R", PAN_MIN, PAN_MAX, PAN_STEP),
-            ("volume", "Vol", MIXER_DB_MIN, MIXER_DB_MAX, MIXER_DB_STEP),
-        ],
-    ),
+    ("input1",   "INPUT 1",  C_BLUE,   [
+        ("pan",   "Pan",   PAN_MIN, PAN_MAX, PAN_STEP),
+        ("volume","Vol",   _MIXER_DB_MIN, _MIXER_DB_MAX, 1.0),
+    ]),
+    ("input2",   "INPUT 2",  C_BLUE,   [
+        ("pan",   "Pan",   PAN_MIN, PAN_MAX, PAN_STEP),
+        ("volume","Vol",   _MIXER_DB_MIN, _MIXER_DB_MAX, 1.0),
+    ]),
+    ("main",     "MAIN OUT", C_GREEN,  [
+        ("pan_l", "Pan L", PAN_MIN, PAN_MAX, PAN_STEP),
+        ("pan_r", "Pan R", PAN_MIN, PAN_MAX, PAN_STEP),
+        ("volume","Vol",   _MIXER_DB_MIN, _MIXER_DB_MAX, 1.0),
+    ]),
+    ("loopback", "LOOPBACK", C_YELLOW, [
+        ("pan_l", "Pan L", PAN_MIN, PAN_MAX, PAN_STEP),
+        ("pan_r", "Pan R", PAN_MIN, PAN_MAX, PAN_STEP),
+        ("volume","Vol",   _MIXER_DB_MIN, _MIXER_DB_MAX, 1.0),
+    ]),
 ]
 
-# Derived layout constants (computed from ELEMENTS and MIXER_SECTIONS)
-_max_pan = max(
-    sum(1 for s in sec[3] if s[0].startswith("pan")) for sec in MIXER_SECTIONS
-)
-MIXER_SECTION_H = _max_pan * 2 + 5  # top + pans*2 + sep + vol_slider + vol_val + bottom
-CONTROLS_BODY_H = len(ELEMENTS) * 4 + (len(ELEMENTS) - 1)  # section rows + gap rows
-TOTAL_H = 2 + CONTROLS_BODY_H + 2  # tab bar + body + help lines
+_max_pan = max(sum(1 for s in sec[3] if s[0].startswith("pan")) for sec in MIXER_SECTIONS)
+MIXER_SECTION_H = _max_pan * 2 + 5
+CONTROLS_BODY_H = len(ELEMENTS) * 4 + (len(ELEMENTS) - 1)
+TOTAL_H = 2 + CONTROLS_BODY_H + 2
 
 
 class EvoTUI:
@@ -107,11 +82,11 @@ class EvoTUI:
         self._slider_map = []
         self._box_attr = 0
         self._mixer_section = 0
-        self._mixer_param = len(MIXER_SECTIONS[0][3]) - 1  # default to volume
+        self._mixer_param = len(MIXER_SECTIONS[0][3]) - 1
         self._mixer_state = {
-            "input1": {"volume": -128.0, "pan": 0.0},
-            "input2": {"volume": -128.0, "pan": 0.0},
-            "main": {"volume": -128.0, "pan_l": -100.0, "pan_r": 100.0},
+            "input1":   {"volume": -128.0, "pan": 0.0},
+            "input2":   {"volume": -128.0, "pan": 0.0},
+            "main":     {"volume": -128.0, "pan_l": -100.0, "pan_r": 100.0},
             "loopback": {"volume": -128.0, "pan_l": -100.0, "pan_r": 100.0},
         }
         self._sync()
@@ -134,11 +109,9 @@ class EvoTUI:
         return self.state[key] if sub is None else self.state[key][sub]
 
     def _frac(self, idx):
-        """Slider fill fraction 0.0-1.0."""
         key = ELEMENTS[idx][0]
-        val = self._val(idx)
         lo, hi, _ = RANGES[key]
-        return max(0.0, min(1.0, (val - lo) / (hi - lo)))
+        return max(0.0, min(1.0, (self._val(idx) - lo) / (hi - lo)))
 
     def _muted(self, idx):
         key = ELEMENTS[idx][0]
@@ -151,9 +124,7 @@ class EvoTUI:
         return ELEMENTS[idx][0].startswith("input")
 
     def _is_db(self, idx=None):
-        if idx is None:
-            idx = self.cursor
-        return ELEMENTS[idx][0] != "monitor"
+        return ELEMENTS[self.cursor if idx is None else idx][0] != "monitor"
 
     def _current_unit(self):
         if self._window == "controls":
@@ -182,8 +153,7 @@ class EvoTUI:
             self._set_status(f"Error: {e}", err=True)
 
     def _adjust(self, delta):
-        key = ELEMENTS[self.cursor][0]
-        _, _, step = RANGES[key]
+        _, _, step = RANGES[ELEMENTS[self.cursor][0]]
         self._set_val(self._val() + delta * step)
 
     def _toggle_mute(self):
@@ -191,8 +161,9 @@ class EvoTUI:
         if key == "monitor":
             return
         try:
-            self.evo.set_mute(key, not self.state[key]["mute"])
-            self.state[key]["mute"] = not self.state[key]["mute"]
+            new = not self.state[key]["mute"]
+            self.evo.set_mute(key, new)
+            self.state[key]["mute"] = new
         except OSError as e:
             self._set_status(f"Error: {e}", err=True)
 
@@ -201,8 +172,9 @@ class EvoTUI:
         if not key.startswith("input"):
             return
         try:
-            self.evo.set_phantom(key, not self.state[key]["phantom"])
-            self.state[key]["phantom"] = not self.state[key]["phantom"]
+            new = not self.state[key]["phantom"]
+            self.evo.set_phantom(key, new)
+            self.state[key]["phantom"] = new
         except OSError as e:
             self._set_status(f"Error: {e}", err=True)
 
@@ -216,13 +188,11 @@ class EvoTUI:
     def _mixer_set_val(self, val):
         key, _, _, sliders = MIXER_SECTIONS[self._mixer_section]
         param, _, lo, hi, _ = sliders[self._mixer_param]
-        val = max(lo, min(hi, val))
-        self._mixer_state[key][param] = val
+        self._mixer_state[key][param] = max(lo, min(hi, val))
         self._apply_mixer(key)
 
     def _mixer_adjust(self, delta):
-        _, _, _, sliders = MIXER_SECTIONS[self._mixer_section]
-        _, _, _, _, step = sliders[self._mixer_param]
+        _, _, _, _, step = MIXER_SECTIONS[self._mixer_section][3][self._mixer_param]
         self._mixer_set_val(self._mixer_val() + delta * step)
 
     def _apply_mixer(self, key):
@@ -247,18 +217,17 @@ class EvoTUI:
 
     def _enter_save_mode(self):
         self._file_list = self._scan_files()
-        self._file_cursor = 0
-        self._file_scroll = 0
+        self._file_cursor = self._file_scroll = 0
         self._file_input = "config.json"
         self._mode = "save"
 
     def _enter_load_mode(self):
-        self._file_list = self._scan_files()
-        if not self._file_list:
+        files = self._scan_files()
+        if not files:
             self._set_status(f"No configs in {cfg.CONFIG_DIR}", err=True)
             return
-        self._file_cursor = 0
-        self._file_scroll = 0
+        self._file_list = files
+        self._file_cursor = self._file_scroll = 0
         self._mode = "load"
 
     def _picker_move(self, delta):
@@ -275,7 +244,6 @@ class EvoTUI:
         if key == 27:
             self._mode = "normal"
             return
-
         if self._mode == "load":
             if key in (curses.KEY_UP, ord("k")):
                 self._picker_move(-1)
@@ -326,81 +294,57 @@ class EvoTUI:
         except curses.error:
             pass
 
-    def _box_top(self, scr, row, cx, label, active=False):
-        if active:
-            self._box_attr = curses.A_BOLD
-        else:
-            self._box_attr = curses.color_pair(C_WHITE) | curses.A_DIM
-        dashes = BOX_IW - len(label) - 3
+    def _box_top(self, scr, row, cx, label, active=False, iw=BOX_IW):
+        self._box_attr = curses.A_BOLD if active else curses.color_pair(C_WHITE) | curses.A_DIM
+        dashes = iw - len(label) - 3
         self._safe(scr, row, cx, "\u250c\u2500 ", self._box_attr)
         self._safe(scr, row, cx + 3, label, self._box_attr)
-        self._safe(
-            scr, row, cx + 3 + len(label), " " + "\u2500" * dashes + "\u2510", self._box_attr
-        )
+        self._safe(scr, row, cx + 3 + len(label), " " + "\u2500" * dashes + "\u2510", self._box_attr)
 
-    def _box_side(self, scr, row, cx):
-        self._safe(scr, row, cx, "\u2502", self._box_attr)
-        self._safe(scr, row, cx + BOX_IW + 1, "\u2502", self._box_attr)
-
-    def _box_bot(self, scr, row, cx):
-        self._safe(scr, row, cx, "\u2514" + "\u2500" * BOX_IW + "\u2518", self._box_attr)
-
-    def _box_bot_labeled(self, scr, row, cx, label):
-        dashes = BOX_IW - len(label) - 3
-        self._safe(
-            scr,
-            row,
-            cx,
-            "\u2514" + "\u2500" * dashes + " " + label + " \u2500\u2518",
-            self._box_attr,
-        )
-
-    def _box_top_narrow(self, scr, row, cx, label, active=False):
-        if active:
-            self._box_attr = curses.A_BOLD
-        else:
-            self._box_attr = curses.color_pair(C_WHITE) | curses.A_DIM
-        label = label[: MIXER_SECTION_IW - 2]
-        inner = MIXER_SECTION_IW - len(label) - 2
+    def _box_top_centered(self, scr, row, cx, label, active=False, iw=MIXER_SECTION_IW):
+        self._box_attr = curses.A_BOLD if active else curses.color_pair(C_WHITE) | curses.A_DIM
+        label = label[:iw - 2]
+        inner = iw - len(label) - 2
         left_d = inner // 2
-        right_d = inner - left_d
-        self._safe(
-            scr,
-            row,
-            cx,
-            "\u250c" + "\u2500" * left_d + " " + label + " " + "\u2500" * right_d + "\u2510",
-            self._box_attr,
-        )
+        self._safe(scr, row, cx,
+            "\u250c" + "\u2500" * left_d + " " + label + " " + "\u2500" * (inner - left_d) + "\u2510",
+            self._box_attr)
 
-    def _box_side_narrow(self, scr, row, cx):
+    def _box_side(self, scr, row, cx, iw=BOX_IW):
         self._safe(scr, row, cx, "\u2502", self._box_attr)
-        self._safe(scr, row, cx + MIXER_SECTION_IW + 1, "\u2502", self._box_attr)
+        self._safe(scr, row, cx + iw + 1, "\u2502", self._box_attr)
+
+    def _box_bot(self, scr, row, cx, iw=BOX_IW):
+        self._safe(scr, row, cx, "\u2514" + "\u2500" * iw + "\u2518", self._box_attr)
+
+    def _box_bot_labeled(self, scr, row, cx, label, iw=BOX_IW):
+        dashes = iw - len(label) - 3
+        self._safe(scr, row, cx, "\u2514" + "\u2500" * dashes + " " + label + " \u2500\u2518", self._box_attr)
+
+    def _box_sep(self, scr, row, cx, iw):
+        self._safe(scr, row, cx, "\u251c" + "\u2500" * iw + "\u2524", self._box_attr)
 
     def _hslider(self, scr, row, x, frac, muted=False, sel=False, color=C_GREEN, w=SLIDER_W):
         filled = max(0, min(w, round(w * frac)))
-        if muted:
-            fill_attr = curses.color_pair(C_RED) | (curses.A_BOLD if sel else curses.A_DIM)
-        else:
-            fill_attr = curses.color_pair(color) | (curses.A_BOLD if sel else curses.A_DIM)
+        fill_attr = curses.color_pair(C_RED if muted else color) | (curses.A_BOLD if sel else curses.A_DIM)
         empty_attr = curses.color_pair(C_WHITE) | (curses.A_NORMAL if sel else curses.A_DIM)
         if filled:
             self._safe(scr, row, x, "\u2588" * filled, fill_attr)
         if filled < w:
             self._safe(scr, row, x + filled, "\u2588" * (w - filled), empty_attr)
 
-    def _dual_slider(self, scr, row, x, frac, sel=False, color=C_GREEN, fill_char="\u2588"):
-        """Dual-side slider: fills from center outward.
-        frac=0.5 -> both halves half-full; frac<0.5 -> more left; frac>0.5 -> more right."""
+    def _dual_slider(self, scr, row, x, frac, sel=False, color=C_GREEN):
+        """Dual-side slider: fills from center outward."""
         half = SLIDER_W // 2
         left_fill = max(0, min(half, round((1.0 - frac) * half)))
         right_fill = half - left_fill
         fill_attr = curses.color_pair(color) | (curses.A_BOLD if sel else curses.A_DIM)
         empty_attr = curses.color_pair(C_WHITE) | (curses.A_NORMAL if sel else curses.A_DIM)
         self._safe(scr, row, x, "\u2588" * SLIDER_W, empty_attr)
-        if left_fill > 0:
-            self._safe(scr, row, x + half - left_fill, fill_char * left_fill, fill_attr)
-        if right_fill > 0:
-            self._safe(scr, row, x + half, fill_char * right_fill, fill_attr)
+        if left_fill:
+            self._safe(scr, row, x + half - left_fill, "\u2588" * left_fill, fill_attr)
+        if right_fill:
+            self._safe(scr, row, x + half, "\u2588" * right_fill, fill_attr)
         self._safe(scr, row, x + half, "\u2502", curses.A_BOLD)
 
     def _narrow_pan_slider(self, scr, row, x, frac, sel=False, color=C_GREEN):
@@ -417,25 +361,18 @@ class EvoTUI:
         right_full = right_slots // 2
         right_partial = right_slots % 2
 
-        # Empty track (░ light shade)
         self._safe(scr, row, x, "\u2591" * H, empty_attr)
         self._safe(scr, row, x + H + 1, "\u2591" * H, empty_attr)
 
-        # Left fill: full blocks from center (x+H-1) going left
-        if left_full > 0:
+        if left_full:
             self._safe(scr, row, x + H - left_full, "\u2588" * left_full, fill_attr)
-        # Partial boundary char: ▐ (right half dark = center-facing side filled)
         if left_partial:
             self._safe(scr, row, x + H - left_full - 1, "\u2590", fill_attr)
-
-        # Right fill: full blocks from center (x+H+1) going right
-        if right_full > 0:
+        if right_full:
             self._safe(scr, row, x + H + 1, "\u2588" * right_full, fill_attr)
-        # Partial boundary char: ▌ (left half dark = center-facing side filled)
         if right_partial:
             self._safe(scr, row, x + H + 1 + right_full, "\u258c", fill_attr)
 
-        # Center divider
         self._safe(scr, row, x + H, "\u2502", curses.A_BOLD)
 
     def _mute_ind(self, scr, row, x, key):
@@ -468,7 +405,6 @@ class EvoTUI:
             active_x, active_w = tab_x + len(ctrl_label) + 1, len(mix_label)
         self._safe(scr, row, tab_x, ctrl_label, ctrl_attr)
         self._safe(scr, row, tab_x + len(ctrl_label) + 1, mix_label, mix_attr)
-        # Separator line - dashes across content width, gap under active tab
         self._safe(scr, row + 1, cx, "\u2500" * content_w, dim)
         self._safe(scr, row + 1, active_x, " " * active_w, dim)
 
@@ -522,55 +458,43 @@ class EvoTUI:
         pan_params = [(i, s) for i, s in enumerate(sliders) if s[0].startswith("pan")]
         vol_param_idx = next(i for i, s in enumerate(sliders) if s[0] == "volume")
 
-        self._box_top_narrow(scr, top_row, cx, label, sel_sec)
+        self._box_top_centered(scr, top_row, cx, label, sel_sec)
         row = top_row + 1
 
-        # 2 pan slots for uniform height across all sections
         for slot in range(2):
-            self._box_side_narrow(scr, row, cx)
+            self._box_side(scr, row, cx, MIXER_SECTION_IW)
             if slot < len(pan_params):
                 pidx, (param, _, lo, hi, _) = pan_params[slot]
                 val = self._mixer_state[key][param]
-                pan_frac = (val - lo) / (hi - lo)
                 sel = sel_sec and self._mixer_param == pidx
-                self._narrow_pan_slider(scr, row, cx + 1, pan_frac, sel, color)
+                self._narrow_pan_slider(scr, row, cx + 1, (val - lo) / (hi - lo), sel, color)
             row += 1
 
-            self._box_side_narrow(scr, row, cx)
+            self._box_side(scr, row, cx, MIXER_SECTION_IW)
             if slot < len(pan_params):
                 pidx, (param, plabel, lo, hi, _) = pan_params[slot]
                 val = self._mixer_state[key][param]
                 sel = sel_sec and self._mixer_param == pidx
-                val_str = f"{plabel:<5} {val:+5.0f}"
-                self._safe(scr, row, cx + 1, val_str, curses.A_BOLD if sel else 0)
+                self._safe(scr, row, cx + 1, f"{plabel:<5} {val:+5.0f}",
+                           curses.A_BOLD if sel else 0)
             row += 1
 
-        # Separator
-        self._safe(
-            scr,
-            row,
-            cx,
-            "\u251c" + "\u2500" * MIXER_SECTION_IW + "\u2524",
-            self._box_attr,
-        )
+        self._box_sep(scr, row, cx, MIXER_SECTION_IW)
         row += 1
 
-        # Horizontal volume slider
         vol_val = self._mixer_state[key]["volume"]
-        vol_frac = max(0.0, min(1.0, (vol_val - MIXER_DB_MIN) / (MIXER_DB_MAX - MIXER_DB_MIN)))
+        vol_frac = max(0.0, min(1.0, (vol_val - _MIXER_DB_MIN) / (_MIXER_DB_MAX - _MIXER_DB_MIN)))
         vol_sel = sel_sec and self._mixer_param == vol_param_idx
-        self._box_side_narrow(scr, row, cx)
+        self._box_side(scr, row, cx, MIXER_SECTION_IW)
         self._hslider(scr, row, cx + 1, vol_frac, sel=vol_sel, color=color, w=MIXER_SECTION_IW)
         row += 1
 
-        # Volume value row
-        self._box_side_narrow(scr, row, cx)
-        vol_str = f"{'Vol':<5} {vol_val:+6.1f}dB"
-        self._safe(scr, row, cx + 1, vol_str, curses.A_BOLD if vol_sel else 0)
+        self._box_side(scr, row, cx, MIXER_SECTION_IW)
+        self._safe(scr, row, cx + 1, f"{'Vol':<5} {vol_val:+6.1f}dB",
+                   curses.A_BOLD if vol_sel else 0)
         row += 1
 
-        # Box bottom
-        self._safe(scr, row, cx, "\u2514" + "\u2500" * MIXER_SECTION_IW + "\u2518", self._box_attr)
+        self._box_bot(scr, row, cx, MIXER_SECTION_IW)
 
     # -- file picker dialog --
 
@@ -586,47 +510,35 @@ class EvoTUI:
         dashes = BOX_IW - len(title) - 3
         self._safe(scr, row, cx, "\u250c\u2500 ", self._box_attr)
         self._safe(scr, row, cx + 3, title, self._box_attr)
-        self._safe(
-            scr, row, cx + 3 + len(title), " " + "\u2500" * dashes + "\u2510", self._box_attr
-        )
+        self._safe(scr, row, cx + 3 + len(title), " " + "\u2500" * dashes + "\u2510", self._box_attr)
         row += 1
 
         self._box_side(scr, row, cx)
-        self._safe(scr, row, cx + SLIDER_OFF, f"{cfg.CONFIG_DIR}/"[: BOX_IW - 2], curses.A_DIM)
+        self._safe(scr, row, cx + SLIDER_OFF, f"{cfg.CONFIG_DIR}/"[:BOX_IW - 2], curses.A_DIM)
         row += 1
 
         self._box_side(scr, row, cx)
         row += 1
 
-        if not self._file_list:
+        for i in range(PICKER_LIST_H):
             self._box_side(scr, row, cx)
-            self._safe(scr, row, cx + SLIDER_OFF, "(no configs found)", curses.A_DIM)
-            row += 1
-            for _ in range(PICKER_LIST_H - 1):
-                self._box_side(scr, row, cx)
-                row += 1
-        else:
-            visible = self._file_list[self._file_scroll : self._file_scroll + PICKER_LIST_H]
-            for i, f in enumerate(visible):
-                abs_i = self._file_scroll + i
+            abs_i = self._file_scroll + i
+            if not self._file_list and i == 0:
+                self._safe(scr, row, cx + SLIDER_OFF, "(no configs found)", curses.A_DIM)
+            elif abs_i < len(self._file_list):
+                f = self._file_list[abs_i]
                 sel = abs_i == self._file_cursor
-                self._box_side(scr, row, cx)
                 pre = "\u25b6 " if sel else "  "
                 attr = curses.color_pair(C_CYAN) | curses.A_BOLD if sel else 0
-                self._safe(scr, row, cx + SLIDER_OFF, f"{pre}{f.name}"[: BOX_IW - 2], attr)
-                row += 1
-            for _ in range(PICKER_LIST_H - len(visible)):
-                self._box_side(scr, row, cx)
-                row += 1
+                self._safe(scr, row, cx + SLIDER_OFF, f"{pre}{f.name}"[:BOX_IW - 2], attr)
+            row += 1
 
         self._box_side(scr, row, cx)
         row += 1
 
         if self._mode == "save":
             self._box_side(scr, row, cx)
-            self._safe(
-                scr, row, cx + SLIDER_OFF, f"File: {self._file_input}_"[: BOX_IW - 2], curses.A_BOLD
-            )
+            self._safe(scr, row, cx + SLIDER_OFF, f"File: {self._file_input}_"[:BOX_IW - 2], curses.A_BOLD)
             row += 1
 
         self._box_side(scr, row, cx)
@@ -654,13 +566,12 @@ class EvoTUI:
         mixer_w = len(MIXER_SECTIONS) * (MIXER_SECTION_IW + 3) - 1
         content_w = max(BOX_IW + 2, mixer_w)
         cx = max(0, (w - content_w) // 2)
-        total_h = TOTAL_H
 
-        if h < total_h or w < content_w:
-            self._safe(scr, 0, 0, f"Terminal too small ({w}x{h}, need {content_w}x{total_h})")
+        if h < TOTAL_H or w < content_w:
+            self._safe(scr, 0, 0, f"Terminal too small ({w}x{h}, need {content_w}x{TOTAL_H})")
             return
 
-        row = max(0, (h - total_h) // 2)
+        row = max(0, (h - TOTAL_H) // 2)
         self._draw_tab_bar(scr, row, cx, content_w)
         row += 2
 
@@ -685,34 +596,26 @@ class EvoTUI:
             help1 += "  P:48V"
         self._safe(scr, row, cx + 1, help1, curses.color_pair(C_WHITE) | curses.A_DIM)
         row += 1
-
-        self._safe(
-            scr,
-            row,
-            cx + 1,
-            "s:save  o:load  Tab:mixer  q:quit",
-            curses.color_pair(C_WHITE) | curses.A_DIM,
-        )
-        row += 1
-        return row
+        self._safe(scr, row, cx + 1, "s:save  o:load  Tab:mixer  q:quit",
+                   curses.color_pair(C_WHITE) | curses.A_DIM)
+        return row + 1
 
     def _draw_mixer_body(self, scr, row, cx):
-        sec_ow = MIXER_SECTION_IW + 3  # section width + 1-space gap
+        sec_ow = MIXER_SECTION_IW + 3
         for sec_idx in range(len(MIXER_SECTIONS)):
             self._draw_mixer_section(scr, row, cx + sec_idx * sec_ow, sec_idx)
-        row += CONTROLS_BODY_H  # jump to same help row as controls tab
+        row += CONTROLS_BODY_H
 
-        _, _, _, sliders = MIXER_SECTIONS[self._mixer_section]
-        param = sliders[self._mixer_param][0]
+        param = MIXER_SECTIONS[self._mixer_section][3][self._mixer_param][0]
         if param == "volume":
             help1 = "n/p:section  j/k:param  h/l:\xb11dB (H/L:\xb15dB)"
         else:
             help1 = "n/p:section  j/k:param  h/l:\xb15 (H/L:\xb125)"
         self._safe(scr, row, cx + 1, help1, curses.color_pair(C_WHITE) | curses.A_DIM)
         row += 1
-        self._safe(scr, row, cx + 1, "Tab:controls  q:quit", curses.color_pair(C_WHITE) | curses.A_DIM)
-        row += 1
-        return row
+        self._safe(scr, row, cx + 1, "Tab:controls  q:quit",
+                   curses.color_pair(C_WHITE) | curses.A_DIM)
+        return row + 1
 
     def _draw_status_bar(self, scr, row, cx):
         if not self.status and not self.num_buf:
@@ -723,38 +626,32 @@ class EvoTUI:
         self._box_side(scr, row, cx)
         if self.num_buf:
             unit = self._current_unit()
-            self._safe(
-                scr,
-                row,
-                cx + SLIDER_OFF,
-                f"set {self.num_buf}_ {unit} (Enter=confirm  Esc=cancel)",
-                curses.color_pair(C_YELLOW),
-            )
+            self._safe(scr, row, cx + SLIDER_OFF,
+                       f"set {self.num_buf}_ {unit} (Enter=confirm  Esc=cancel)",
+                       curses.color_pair(C_YELLOW))
         else:
-            attr = (
-                curses.color_pair(C_RED) | curses.A_BOLD
-                if self.status_err
-                else curses.color_pair(C_YELLOW)
-            )
+            attr = (curses.color_pair(C_RED) | curses.A_BOLD
+                    if self.status_err else curses.color_pair(C_YELLOW))
             self._safe(scr, row, cx + SLIDER_OFF, self.status, attr)
         row += 1
         self._box_bot_labeled(scr, row, cx, "STATUS")
 
     # -- key handlers --
 
+    def _handle_adjust(self, key, fn):
+        """Handle h/l/H/L adjustment keys. Returns True if consumed."""
+        if key == ord("h"):    fn(-1)
+        elif key == ord("l"): fn(1)
+        elif key == ord("H"): fn(-5)
+        elif key == ord("L"): fn(5)
+        else: return False
+        return True
+
     def _controls_key(self, key):
         if key == ord("j"):
             self.cursor = (self.cursor + 1) % len(ELEMENTS)
         elif key == ord("k"):
             self.cursor = (self.cursor - 1) % len(ELEMENTS)
-        elif key == ord("h"):
-            self._adjust(-1)
-        elif key == ord("l"):
-            self._adjust(1)
-        elif key == ord("H"):
-            self._adjust(-5)
-        elif key == ord("L"):
-            self._adjust(5)
         elif key == ord("m"):
             self._toggle_mute()
         elif key == ord("P"):
@@ -763,6 +660,8 @@ class EvoTUI:
             self._enter_save_mode()
         elif key == ord("o"):
             self._enter_load_mode()
+        else:
+            self._handle_adjust(key, self._adjust)
 
     def _mixer_key(self, key):
         n = len(MIXER_SECTIONS)
@@ -777,35 +676,22 @@ class EvoTUI:
             self._mixer_param = (self._mixer_param - 1) % n_params
         elif key == ord("j"):
             self._mixer_param = (self._mixer_param + 1) % n_params
-        elif key == ord("h"):
-            self._mixer_adjust(-1)
-        elif key == ord("l"):
-            self._mixer_adjust(1)
         elif key == curses.KEY_UP:
             self._mixer_adjust(1)
         elif key == curses.KEY_DOWN:
             self._mixer_adjust(-1)
-        elif key == ord("H"):
-            self._mixer_adjust(-5)
-        elif key == ord("L"):
-            self._mixer_adjust(5)
+        else:
+            self._handle_adjust(key, self._mixer_adjust)
 
     # -- event loop --
 
     def run(self, scr):
         curses.curs_set(0)
         curses.use_default_colors()
-        for i, color in enumerate(
-            [
-                curses.COLOR_GREEN,
-                curses.COLOR_RED,
-                curses.COLOR_CYAN,
-                curses.COLOR_YELLOW,
-                curses.COLOR_WHITE,
-                curses.COLOR_BLUE,
-            ],
-            1,
-        ):
+        for i, color in enumerate([
+            curses.COLOR_GREEN, curses.COLOR_RED, curses.COLOR_CYAN,
+            curses.COLOR_YELLOW, curses.COLOR_WHITE, curses.COLOR_BLUE,
+        ], 1):
             curses.init_pair(i, color, -1)
         curses.set_escdelay(25)
         curses.mousemask(curses.ALL_MOUSE_EVENTS)
