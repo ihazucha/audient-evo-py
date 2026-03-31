@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# evo4_wireplumber_setup.sh — Install Audient EVO4 PipeWire/WirePlumber config
+# evo4-setup-install.sh — Install Audient EVO4 PipeWire/WirePlumber config
 #
-# Installs a clean audio configuration for the EVO4 on PipeWire + WirePlumber 0.5+.
-# Replaces the broken mix of Lua configs, phantom profile-set references, and
-# unused virtual sinks with a minimal set of working configs.
+# Installs audio configuration for the EVO4 on PipeWire + WirePlumber 0.5+.
 #
 # What it does:
 #   1. Backs up existing configs
@@ -12,7 +10,7 @@
 #   4. Restarts PipeWire + WirePlumber
 #   5. Sets EVO4 stereo nodes as default devices
 #
-# Usage: bash evo4_wireplumber_setup.sh
+# Usage: bash evo4-setup-install.sh
 
 set -euo pipefail
 
