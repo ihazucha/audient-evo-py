@@ -14,7 +14,7 @@ from pathlib import Path
 
 CONFIG_DIR        = Path.home() / ".config" / "audient-evo-py"
 CONFIG_FILE       = CONFIG_DIR / "config.json"
-MIXER_STATE_FILE  = CONFIG_DIR / "mixer-state.json"
+MIXER_STATE_FILE  = CONFIG_DIR / ".mixer-state.json"
 
 
 def load_mixer_state(path=None) -> dict | None:

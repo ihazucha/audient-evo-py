@@ -227,7 +227,7 @@ _USB_ERRORS = {
     errno.ETIMEDOUT: "USB timeout — try unplugging and replugging the device.",
 }
 
-if __name__ == "__main__":
+def main():
     args = parse_args()
     try:
         evo = EVO4Controller()
@@ -239,3 +239,7 @@ if __name__ == "__main__":
         msg = _USB_ERRORS.get(e.errno if e.errno else -1, f"USB error: {e}")
         print(f"error: {msg}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

@@ -89,6 +89,7 @@ class EvoTUI:
             "main":     {"volume": -128.0, "pan_l": -100.0, "pan_r": 100.0},
             "loopback": {"volume": -128.0, "pan_l": -100.0, "pan_r": 100.0},
         }
+        self._load_mixer_state()
         self._sync()
 
     # -- state --
@@ -178,6 +179,29 @@ class EvoTUI:
         except OSError as e:
             self._set_status(f"Error: {e}", err=True)
 
+    # -- mixer state persistence --
+
+    def _load_mixer_state(self):
+        """Load mixer state from disk into TUI state (maps 'output' key to 'main')."""
+        data = cfg.load_mixer_state()
+        if data is None:
+            return
+        for key in ("input1", "input2", "loopback"):
+            if key in data:
+                self._mixer_state[key].update(data[key])
+        if "output" in data:
+            self._mixer_state["main"].update(data["output"])
+
+    def _save_mixer_state(self):
+        """Persist TUI mixer state to disk (maps 'main' key to 'output')."""
+        data = {
+            "input1":   dict(self._mixer_state["input1"]),
+            "input2":   dict(self._mixer_state["input2"]),
+            "output":   dict(self._mixer_state["main"]),
+            "loopback": dict(self._mixer_state["loopback"]),
+        }
+        cfg.save_mixer_state(data)
+
     # -- mixer actions --
 
     def _mixer_val(self):
@@ -206,6 +230,7 @@ class EvoTUI:
                 self.evo.set_mixer_output(s["volume"], s["pan_l"], s["pan_r"])
             elif key == "loopback":
                 self.evo.set_mixer_loopback(s["volume"], s["pan_l"], s["pan_r"])
+            self._save_mixer_state()
         except OSError as e:
             self._set_status(f"Error: {e}", err=True)
 
@@ -213,7 +238,7 @@ class EvoTUI:
 
     def _scan_files(self):
         d = cfg.CONFIG_DIR
-        return sorted(d.glob("*.json")) if d.exists() else []
+        return sorted(f for f in d.glob("*.json") if not f.name.startswith(".")) if d.exists() else []
 
     def _enter_save_mode(self):
         self._file_list = self._scan_files()
@@ -254,6 +279,7 @@ class EvoTUI:
                 try:
                     cfg.load_and_apply(self.evo, path)
                     self._sync()
+                    self._load_mixer_state()
                     self._set_status(f"Loaded \u2190 {path.name}")
                 except Exception as e:
                     self._set_status(f"Load error: {e}", err=True)
@@ -636,7 +662,7 @@ class EvoTUI:
             help1 = "n/p:section  j/k:param  h/l:\xb15 (H/L:\xb125)"
         self._safe(scr, row, cx + 1, help1, curses.color_pair(C_WHITE) | curses.A_DIM)
         row += 1
-        self._safe(scr, row, cx + 1, "Tab:controls  q:quit",
+        self._safe(scr, row, cx + 1, "s:save  o:load  Tab:controls  q:quit",
                    curses.color_pair(C_WHITE) | curses.A_DIM)
         return row + 1
 
@@ -679,10 +705,6 @@ class EvoTUI:
             self._toggle_mute()
         elif key == ord("P"):
             self._toggle_phantom()
-        elif key == ord("s"):
-            self._enter_save_mode()
-        elif key == ord("o"):
-            self._enter_load_mode()
         else:
             self._handle_adjust(key, self._adjust)
 
@@ -732,6 +754,10 @@ class EvoTUI:
 
             if key == ord("q"):
                 break
+            elif key == ord("s"):
+                self._enter_save_mode()
+            elif key == ord("o"):
+                self._enter_load_mode()
             elif key == 9:  # Tab
                 self._window = "mixer" if self._window == "controls" else "controls"
                 self.num_buf = ""
