@@ -27,10 +27,9 @@ _CS_VOLUME = 2
 _FU10 = 0x0A00  # Output volume
 _FU11 = 0x0B00  # Input gain
 
-# Volume (FU10): effective range [-96, 0] dB, power curve anchored at 50% → -20 dB
+# Volume (FU10): [-96, 0] dB
 _VOL_DB_MIN = -96.0
 _VOL_DB_MAX = 0.0
-_VOL_CURVE_N = math.log(1.0 - 20.0 / 96.0) / math.log(0.5)
 
 # Gain (FU11): [-8.0, 50.0] dB, device quantizes to 1 dB steps
 _GAIN_DB_MIN = -8.0
@@ -106,17 +105,6 @@ class EVO4Controller:
                 yield fd
 
     # --- Output Volume (Feature Unit 10) ---
-    # Power curve: 50% → -20 dB, matching the EVO4 app's knob response
-
-    @staticmethod
-    def _vol_pct_to_db(percent: int) -> float:
-        p = max(0, min(100, percent)) / 100.0
-        return _VOL_DB_MIN * (1.0 - p**_VOL_CURVE_N)
-
-    @staticmethod
-    def _vol_db_to_pct(db: float) -> int:
-        db = max(_VOL_DB_MIN, min(_VOL_DB_MAX, db))
-        return round(100.0 * (1.0 - db / _VOL_DB_MIN) ** (1.0 / _VOL_CURVE_N))
 
     def _get_fu_raw(self, unit: int, cn: int) -> int:
         """Read raw 16-bit USB value from a Feature Unit channel."""
@@ -134,28 +122,19 @@ class EVO4Controller:
                 data=(raw & 0xFFFF).to_bytes(2, "little"),
             )
 
-    def get_volume(self) -> int:
-        """Get output volume as percentage (0-100). Both channels are ganged."""
-        return self._vol_db_to_pct(_usb_to_db(self._get_fu_raw(_FU10, 1)))
+    def get_volume(self) -> float:
+        """Get output volume in dB [-96.0, 0.0]. Both channels are ganged."""
+        return _usb_to_db(self._get_fu_raw(_FU10, 1))
 
-    def get_volume_debug(self) -> tuple[int, int, float]:
-        """Get volume with debug info: (percent, raw, dB)."""
+    def get_volume_debug(self) -> tuple[int, float]:
+        """Get volume with debug info: (raw, dB)."""
         raw = self._get_fu_raw(_FU10, 1)
         db = _usb_to_db(raw)
-        pct = self._vol_db_to_pct(db)
-        return (pct, raw, db)
+        return (raw, db)
 
-    def set_volume(self, percent: int) -> tuple[int, float]:
-        """Set output volume (0-100) on both channels.
+    def set_volume(self, db: float) -> tuple[int, float]:
+        """Set output volume in dB [-96.0, 0.0] on both channels.
         Returns (raw, dB) sent."""
-        if not 0 <= percent <= 100:
-            raise ValueError(f"Volume {percent} outside range [0, 100]")
-        db = self._vol_pct_to_db(percent)
-        return self.set_volume_db(db)
-
-    def set_volume_db(self, db: float) -> tuple[int, float]:
-        """Set output volume in dB [-96.0, 0] on both channels.
-        Returns (raw, dB) sent"""
         db = max(_VOL_DB_MIN, min(_VOL_DB_MAX, db))
         raw = _db_to_usb(db)
         for cn in range(1, _NUM_CHANNELS + 1):
@@ -163,45 +142,23 @@ class EVO4Controller:
         return (raw if raw <= 0x7FFF else raw - 0x10000, db)
 
     # --- Input Gain (Feature Unit 11) ---
-    # Linear: 0% = -8 dB, 100% = +50 dB
-
-    @staticmethod
-    def _gain_pct_to_db(percent: int) -> float:
-        p = max(0, min(100, percent)) / 100.0
-        db = _GAIN_DB_MIN + (_GAIN_DB_MAX - _GAIN_DB_MIN) * p
-        return round(db / _GAIN_DB_STEP) * _GAIN_DB_STEP
-
-    @staticmethod
-    def _gain_db_to_pct(db: float) -> int:
-        db = round(db / _GAIN_DB_STEP) * _GAIN_DB_STEP
-        db = max(_GAIN_DB_MIN, min(_GAIN_DB_MAX, db))
-        return round(100.0 * (db - _GAIN_DB_MIN) / (_GAIN_DB_MAX - _GAIN_DB_MIN))
 
     _GAIN_TARGETS = {"input1": 1, "input2": 2}
 
-    def get_gain(self, target: str) -> int:
-        """Get input gain as percentage (0-100) for target (input1, input2)."""
+    def get_gain(self, target: str) -> float:
+        """Get input gain in dB [-8.0, 50.0] for target (input1, input2)."""
         cn = self._GAIN_TARGETS[target]
-        return self._gain_db_to_pct(_usb_to_db(self._get_fu_raw(_FU11, cn)))
+        return self._snap_gain_db(_usb_to_db(self._get_fu_raw(_FU11, cn)))
 
-    def get_gain_debug(self, target: str) -> tuple[int, int, float]:
-        """Get gain with debug info: (percent, raw, dB) for target."""
+    def get_gain_debug(self, target: str) -> tuple[int, float]:
+        """Get gain with debug info: (raw, dB) for target."""
         cn = self._GAIN_TARGETS[target]
         raw = self._get_fu_raw(_FU11, cn)
-        db = _usb_to_db(raw)
-        pct = self._gain_db_to_pct(db)
-        return (pct, raw, db)
+        db = self._snap_gain_db(_usb_to_db(raw))
+        return (raw, db)
 
-    def set_gain(self, target: str, percent: int) -> tuple[int, float]:
-        """Set target input gain [0, 100].
-        Returns (raw, dB) sent."""
-        if not 0 <= percent <= 100:
-            raise ValueError(f"Gain {percent} outside range [0, 100]")
-        db = self._gain_pct_to_db(percent)
-        return self.set_gain_db(target, db)
-
-    def set_gain_db(self, target: str, db: float) -> tuple[int, float]:
-        """Set target input gain in dB [-8, 50].
+    def set_gain(self, target: str, db: float) -> tuple[int, float]:
+        """Set target input gain in dB [-8.0, 50.0].
         Returns (raw, dB) sent."""
         cn = self._GAIN_TARGETS[target]
         db = max(_GAIN_DB_MIN, min(_GAIN_DB_MAX, db))
@@ -279,12 +236,8 @@ class EVO4Controller:
             gain1 = self._get_fu_raw(_FU11, 1)
             gain2 = self._get_fu_raw(_FU11, 2)
             with self._device() as fd:
-                mix_raw = int.from_bytes(
-                    kmod.get_cur(fd, wValue=self._EU56_WVALUE, wIndex=self._EU56_WINDEX, length=2)[
-                        :2
-                    ],
-                    "little",
-                )
+                mix_bytes = kmod.get_cur(fd, self._EU56_WVALUE, self._EU56_WINDEX, 2)
+                mix_raw = int.from_bytes(mix_bytes[:2], "little")
             in1m = int(self.get_mute("input1"))
             in2m = int(self.get_mute("input2"))
             outm = int(self.get_mute("output"))

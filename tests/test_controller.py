@@ -47,99 +47,38 @@ class TestDbConversions:
             assert _usb_to_db(_db_to_usb(db)) == pytest.approx(db, abs=1/256)
 
 
-class TestVolumeCurve:
-    def test_0_pct_is_min(self):
-        db = EVO4Controller._vol_pct_to_db(0)
-        assert db == pytest.approx(-96.0)
-
-    def test_100_pct_is_max(self):
-        db = EVO4Controller._vol_pct_to_db(100)
-        assert db == pytest.approx(0.0)
-
-    def test_50_pct_is_minus_20(self):
-        db = EVO4Controller._vol_pct_to_db(50)
-        assert db == pytest.approx(-20.0, abs=0.5)
-
-    def test_monotonic(self):
-        prev = -999
-        for pct in range(0, 101):
-            db = EVO4Controller._vol_pct_to_db(pct)
-            assert db >= prev, f"Non-monotonic at {pct}%: {db} < {prev}"
-            prev = db
-
-    def test_pct_roundtrip(self):
-        for pct in range(0, 101):
-            db = EVO4Controller._vol_pct_to_db(pct)
-            back = EVO4Controller._vol_db_to_pct(db)
-            assert back == pct, f"Roundtrip failed: {pct} -> {db} dB -> {back}"
-
-    def test_clamp_below_zero(self):
-        assert EVO4Controller._vol_pct_to_db(-10) == EVO4Controller._vol_pct_to_db(0)
-
-    def test_clamp_above_100(self):
-        assert EVO4Controller._vol_pct_to_db(200) == EVO4Controller._vol_pct_to_db(100)
-
-
-class TestGainCurve:
-    def test_0_pct_is_minus_8(self):
-        db = EVO4Controller._gain_pct_to_db(0)
-        assert db == pytest.approx(-8.0)
-
-    def test_100_pct_is_plus_50(self):
-        db = EVO4Controller._gain_pct_to_db(100)
-        assert db == pytest.approx(50.0)
-
-    def test_linear(self):
-        # 50% should be midpoint: (-8 + 50) / 2 = 21
-        db = EVO4Controller._gain_pct_to_db(50)
-        assert db == pytest.approx(21.0)
-
-    def test_monotonic(self):
-        prev = -999
-        for pct in range(0, 101):
-            db = EVO4Controller._gain_pct_to_db(pct)
-            assert db >= prev
-            prev = db
-
-    def test_pct_roundtrip(self):
-        for pct in range(0, 101):
-            db = EVO4Controller._gain_pct_to_db(pct)
-            back = EVO4Controller._gain_db_to_pct(db)
-            assert abs(back - pct) <= 1, f"Roundtrip failed: {pct} -> {db} dB -> {back}"
-
-
 # --- Hardware integration tests ---
 
 class TestVolume:
     def test_set_and_get(self, evo):
         original = evo.get_volume()
-        target = 42 if original != 42 else 43
+        target = -20.0 if abs(original - (-20.0)) > 1.0 else -30.0
 
         try:
             evo.set_volume(target)
             time.sleep(SETTLE_TIME)
             result = evo.get_volume()
-            assert abs(result - target) <= 1, \
-                f"Volume: expected ~{target}, got {result}"
+            assert abs(result - target) <= 0.5, \
+                f"Volume: expected ~{target} dB, got {result} dB"
         finally:
             evo.set_volume(original)
 
     def test_volume_boundaries(self, evo):
         original = evo.get_volume()
         try:
-            for target in (0, 100):
+            for target in (-96.0, 0.0):
                 evo.set_volume(target)
                 time.sleep(SETTLE_TIME)
                 result = evo.get_volume()
-                assert result == target, \
-                    f"Volume at boundary {target}: got {result}"
+                assert abs(result - target) <= 0.5, \
+                    f"Volume at boundary {target} dB: got {result} dB"
         finally:
             evo.set_volume(original)
 
     def test_set_returns_raw_and_db(self, evo):
         original = evo.get_volume()
         try:
-            raw, db = evo.set_volume(50)
+            raw, db = evo.set_volume(-20.0)
             assert isinstance(raw, int)
             assert isinstance(db, float)
             assert db == pytest.approx(-20.0, abs=0.5)
@@ -147,25 +86,24 @@ class TestVolume:
             evo.set_volume(original)
 
     def test_debug_format(self, evo):
-        pct, raw, db = evo.get_volume_debug()
-        assert isinstance(pct, int)
+        raw, db = evo.get_volume_debug()
         assert isinstance(raw, int)
         assert isinstance(db, float)
-        assert 0 <= pct <= 100
+        assert -96.0 <= db <= 0.0
 
 
 class TestGain:
     @pytest.mark.parametrize("target", ["input1", "input2"])
     def test_set_and_get(self, evo, target):
         original = evo.get_gain(target)
-        goal = 55 if original != 55 else 56
+        goal = 21.0 if abs(original - 21.0) > 1.0 else 10.0
 
         try:
             evo.set_gain(target, goal)
             time.sleep(SETTLE_TIME)
             result = evo.get_gain(target)
-            assert abs(result - goal) <= 1, \
-                f"Gain {target}: expected ~{goal}, got {result}"
+            assert abs(result - goal) <= 0.5, \
+                f"Gain {target}: expected ~{goal} dB, got {result} dB"
         finally:
             evo.set_gain(target, original)
 
@@ -173,13 +111,13 @@ class TestGain:
         orig1 = evo.get_gain("input1")
         orig2 = evo.get_gain("input2")
         try:
-            evo.set_gain("input1", 10)
-            evo.set_gain("input2", 90)
+            evo.set_gain("input1", -5.0)
+            evo.set_gain("input2", 30.0)
             time.sleep(SETTLE_TIME)
             r1 = evo.get_gain("input1")
             r2 = evo.get_gain("input2")
-            assert abs(r1 - 10) <= 1, f"input1: expected ~10, got {r1}"
-            assert abs(r2 - 90) <= 1, f"input2: expected ~90, got {r2}"
+            assert abs(r1 - (-5.0)) <= 0.5, f"input1: expected ~-5 dB, got {r1}"
+            assert abs(r2 - 30.0) <= 0.5, f"input2: expected ~30 dB, got {r2}"
         finally:
             evo.set_gain("input1", orig1)
             evo.set_gain("input2", orig2)
@@ -188,32 +126,31 @@ class TestGain:
     def test_gain_boundaries(self, evo, target):
         original = evo.get_gain(target)
         try:
-            for goal in (0, 100):
+            for goal in (-8.0, 50.0):
                 evo.set_gain(target, goal)
                 time.sleep(SETTLE_TIME)
                 result = evo.get_gain(target)
-                assert result == goal, \
-                    f"Gain {target} at boundary {goal}: got {result}"
+                assert abs(result - goal) <= 0.5, \
+                    f"Gain {target} at boundary {goal} dB: got {result} dB"
         finally:
             evo.set_gain(target, original)
 
     def test_set_returns_raw_and_db(self, evo):
         original = evo.get_gain("input1")
         try:
-            raw, db = evo.set_gain("input1", 0)
+            _, db = evo.set_gain("input1", -8.0)
             assert db == pytest.approx(-8.0)
-            raw, db = evo.set_gain("input1", 100)
+            _, db = evo.set_gain("input1", 50.0)
             assert db == pytest.approx(50.0)
         finally:
             evo.set_gain("input1", original)
 
     @pytest.mark.parametrize("target", ["input1", "input2"])
     def test_debug_format(self, evo, target):
-        pct, raw, db = evo.get_gain_debug(target)
-        assert isinstance(pct, int)
+        raw, db = evo.get_gain_debug(target)
         assert isinstance(raw, int)
         assert isinstance(db, float)
-        assert 0 <= pct <= 100
+        assert -8.0 <= db <= 50.0
 
 
 class TestMute:

@@ -16,13 +16,11 @@ def parse_args():
     get_p = sparser.add_parser("get", aliases=["g"], help="Get device param.")
     get_p.add_argument("parameter", choices=PARAMETERS)
     get_p.add_argument("--target", "-t", choices=MUTE_TARGETS, default=None)
-    get_p.add_argument("--db", action="store_true", help="Get as dB.")
 
     set_p = sparser.add_parser("set", aliases=["s"], help="Set device param.")
     set_p.add_argument("parameter", choices=PARAMETERS)
     set_p.add_argument("value", type=str)
     set_p.add_argument("--target", "-t", choices=MUTE_TARGETS, default=None)
-    set_p.add_argument("--db", action="store_true", help="Set as dB.")
 
     status_p = sparser.add_parser("status", help="Show all device params.")
     status_p.add_argument("--format", "-f", choices=["plain", "json"], default="plain")
@@ -70,16 +68,16 @@ def parse_args():
 
     if args.action in ("set", "s"):
         if args.parameter in ("volume", "gain", "mix"):
-            if args.db and args.parameter in ("volume", "gain"):
+            if args.parameter in ("volume", "gain"):
                 try:
                     args.value = float(args.value)
                 except ValueError:
-                    parser.error(f"{args.parameter} dB value must be a number.")
+                    parser.error(f"{args.parameter} value must be a number.")
                 if args.parameter == "volume" and not (-96.0 <= args.value <= 0.0):
                     parser.error("Volume must be between -96 and 0 dB.")
                 if args.parameter == "gain" and not (-8.0 <= args.value <= 50.0):
                     parser.error("Gain must be between -8 and 50 dB.")
-            else:
+            else:  # mix
                 try:
                     args.value = int(args.value)
                 except ValueError:
@@ -109,16 +107,14 @@ def _format_status_plain(state: dict) -> str:
     lines = []
     for ch, label in (("input1", "Input 1"), ("input2", "Input 2")):
         inp = state[ch]
-        gain_db = EVO4Controller._gain_pct_to_db(inp["gain"])
         lines.append(f"{label}:")
-        lines.append(f"  {'gain:':<{W}}{inp['gain']:>3d}%  ({gain_db:+.2f} dB)")
+        lines.append(f"  {'gain:':<{W}}{inp['gain']:+.1f} dB")
         lines.append(f"  {'mute:':<{W}}{'on' if inp['mute'] else 'off'}")
         lines.append(f"  {'phantom:':<{W}}{'on' if inp['phantom'] else 'off'}")
         lines.append("")
     out = state["output"]
-    vol_db = EVO4Controller._vol_pct_to_db(out["volume"])
     lines.append("Main output 1|2:")
-    lines.append(f"  {'volume:':<{W}}{out['volume']:>3d}%  ({vol_db:+.2f} dB)")
+    lines.append(f"  {'volume:':<{W}}{out['volume']:+.1f} dB")
     lines.append(f"  {'mute:':<{W}}{'on' if out['mute'] else 'off'}")
     lines.append("")
     lines.append(f"Monitor mix: {state['monitor']}%")
@@ -128,12 +124,12 @@ def _format_status_plain(state: dict) -> str:
 def _run(args, evo: EVO4Controller):
     if args.action in ("get", "g"):
         if args.parameter == "volume":
-            pct, raw, db = evo.get_volume_debug()
-            print(f"[GET] Volume: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
+            raw, db = evo.get_volume_debug()
+            print(f"[GET] Volume: {db:+.2f} dB  (raw=0x{raw & 0xFFFF:04X})")
 
         elif args.parameter == "gain":
-            pct, raw, db = evo.get_gain_debug(args.target)
-            print(f"[GET] Gain {args.target}: {pct}%  (raw=0x{raw & 0xFFFF:04X}, {db:+.2f} dB)")
+            raw, db = evo.get_gain_debug(args.target)
+            print(f"[GET] Gain {args.target}: {db:+.2f} dB  (raw=0x{raw & 0xFFFF:04X})")
 
         elif args.parameter == "mute":
             muted = evo.get_mute(args.target)
@@ -149,15 +145,11 @@ def _run(args, evo: EVO4Controller):
 
     elif args.action in ("set", "s"):
         if args.parameter == "volume":
-            raw, db = evo.set_volume_db(args.value) if args.db else evo.set_volume(args.value)
+            raw, db = evo.set_volume(args.value)
             print(f"[SET] Volume: {db:+.2f} dB  (raw=0x{raw & 0xFFFF:04X})")
 
         elif args.parameter == "gain":
-            raw, db = (
-                evo.set_gain_db(args.target, args.value)
-                if args.db
-                else evo.set_gain(args.target, args.value)
-            )
+            raw, db = evo.set_gain(args.target, args.value)
             print(f"[SET] Gain {args.target}: {db:+.2f} dB  (raw=0x{raw & 0xFFFF:04X})")
 
         elif args.parameter == "mute":

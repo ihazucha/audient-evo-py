@@ -142,9 +142,9 @@ class EvoTUI:
             if key == "monitor":
                 self.evo.set_mix(round(val))
             elif key == "output":
-                self.evo.set_volume_db(val)
+                self.evo.set_volume(val)
             else:
-                self.evo.set_gain_db(key, val)
+                self.evo.set_gain(key, val)
             if sub is None:
                 self.state[key] = val
             else:

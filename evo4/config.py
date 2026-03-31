@@ -3,9 +3,9 @@
 Format:
   {
     "monitor": <int 0-100>,
-    "output":  { "volume": <int 0-100>, "mute": <bool> },
-    "input1":  { "gain": <int 0-100>, "mute": <bool>, "phantom": <bool> },
-    "input2":  { "gain": <int 0-100>, "mute": <bool>, "phantom": <bool> }
+    "output":  { "volume": <float dB [-96, 0]>, "mute": <bool> },
+    "input1":  { "gain": <float dB [-8, 50]>, "mute": <bool>, "phantom": <bool> },
+    "input2":  { "gain": <float dB [-8, 50]>, "mute": <bool>, "phantom": <bool> }
   }
 """
 
