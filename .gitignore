@@ -8,7 +8,8 @@ __pycache__/
 
 dist/
 build/
-*.egg-info/
+*.
+*egg-info/
 
 .pytest_cache/
 .coverage
@@ -20,3 +21,7 @@ build/
 .env.*
 
 *.dll
+
+Dockerfile
+docker-compose.yml
+.dockerignore
