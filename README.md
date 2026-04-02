@@ -72,8 +72,8 @@ python evoctl.py set gain -2 --db -c 1
 python evoctl.py get gain --db
 
 # Monitor mix (0=input, 100=playback)
-python evoctl.py set mix 50
-python evoctl.py get mix
+python evoctl.py set monitor 50
+python evoctl.py get monitor
 
 # Mute (requires -t target)
 python evoctl.py set mute on -t output

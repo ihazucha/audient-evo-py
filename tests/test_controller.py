@@ -264,44 +264,44 @@ class TestPhantom:
             evo.set_phantom("nonexistent", True)
 
 
-class TestMix:
+class TestMonitor:
     def test_set_and_get(self, evo):
-        original = evo.get_mix()
+        original = evo.get_monitor()
         target = 65 if original != 65 else 66
 
         try:
-            evo.set_mix(target)
+            evo.set_monitor(target)
             time.sleep(SETTLE_TIME)
-            result = evo.get_mix()
+            result = evo.get_monitor()
             assert abs(result - target) <= 1, \
-                f"Mix: expected ~{target}, got {result}"
+                f"Monitor: expected ~{target}, got {result}"
         finally:
-            evo.set_mix(original)
+            evo.set_monitor(original)
 
-    def test_mix_boundaries(self, evo):
-        original = evo.get_mix()
+    def test_monitor_boundaries(self, evo):
+        original = evo.get_monitor()
         try:
             for target in (0, 100):
-                evo.set_mix(target)
+                evo.set_monitor(target)
                 time.sleep(SETTLE_TIME)
-                result = evo.get_mix()
+                result = evo.get_monitor()
                 assert abs(result - target) <= 1, \
-                    f"Mix at boundary {target}: got {result}"
+                    f"Monitor at boundary {target}: got {result}"
         finally:
-            evo.set_mix(original)
+            evo.set_monitor(original)
 
-    def test_mix_midpoint(self, evo):
-        original = evo.get_mix()
+    def test_monitor_midpoint(self, evo):
+        original = evo.get_monitor()
         try:
-            evo.set_mix(50)
+            evo.set_monitor(50)
             time.sleep(SETTLE_TIME)
-            result = evo.get_mix()
+            result = evo.get_monitor()
             assert abs(result - 50) <= 1
         finally:
-            evo.set_mix(original)
+            evo.set_monitor(original)
 
-    def test_mix_returns_int(self, evo):
-        result = evo.get_mix()
+    def test_monitor_returns_int(self, evo):
+        result = evo.get_monitor()
         assert isinstance(result, int)
         assert 0 <= result <= 100
 

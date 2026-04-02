@@ -12,7 +12,7 @@ alongside `snd-usb-audio`. See [README.md](README.md) for usage and
 ```bash
 python evoctl.py set volume 75
 python evoctl.py get volume
-python evoctl.py set mix 50
+python evoctl.py set monitor 50
 python evoctl.py get mute -t output
 ```
 

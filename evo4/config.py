@@ -35,7 +35,7 @@ def save_mixer_state(state: dict, path=None):
 def snapshot(evo) -> dict:
     """Read all current device settings into a dict."""
     data = {
-        "monitor": evo.get_mix(),
+        "monitor": evo.get_monitor(),
         "output": {
             "volume": evo.get_volume(),
             "mute":   evo.get_mute("output"),
@@ -74,7 +74,7 @@ def load(path=None) -> dict:
 def apply(evo, data: dict):
     """Apply a config dict to the device."""
     if "monitor" in data:
-        evo.set_mix(data["monitor"])
+        evo.set_monitor(data["monitor"])
     if "output" in data:
         out = data["output"]
         if "volume" in out:

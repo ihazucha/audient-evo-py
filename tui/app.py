@@ -164,7 +164,7 @@ class EvoTUI:
         val = max(lo, min(hi, val))
         try:
             if key == "monitor":
-                self.evo.set_mix(round(val))
+                self.evo.set_monitor(round(val))
             elif key == "output":
                 self.evo.set_volume(val)
             else:

@@ -4,7 +4,7 @@ import sys
 from evo4.controller import EVO4Controller
 from evo4.config import CONFIG_FILE
 
-PARAMETERS = ["volume", "gain", "mute", "mix", "phantom"]
+PARAMETERS = ["volume", "gain", "mute", "monitor", "phantom"]
 INPUT_TARGETS = ["input1", "input2"]
 MUTE_TARGETS = ["input1", "input2", "output"]
 
@@ -67,7 +67,7 @@ def parse_args():
         return args
 
     if args.action in ("set", "s"):
-        if args.parameter in ("volume", "gain", "mix"):
+        if args.parameter in ("volume", "gain", "monitor"):
             if args.parameter in ("volume", "gain"):
                 try:
                     args.value = float(args.value)
@@ -77,7 +77,7 @@ def parse_args():
                     parser.error("Volume must be between -96 and 0 dB.")
                 if args.parameter == "gain" and not (-8.0 <= args.value <= 50.0):
                     parser.error("Gain must be between -8 and 50 dB.")
-            else:  # mix
+            else:  # monitor
                 try:
                     args.value = int(args.value)
                 except ValueError:
@@ -135,9 +135,9 @@ def _run(args, evo: EVO4Controller):
             muted = evo.get_mute(args.target)
             print(f"[GET] Mute {args.target}: {'on' if muted else 'off'}")
 
-        elif args.parameter == "mix":
-            mix = evo.get_mix()
-            print(f"[GET] Mix: {mix}% (0=input, 100=playback)")
+        elif args.parameter == "monitor":
+            mix = evo.get_monitor()
+            print(f"[GET] Monitor: {mix}% (0=input, 100=playback)")
 
         elif args.parameter == "phantom":
             state = evo.get_phantom(args.target)
@@ -156,9 +156,9 @@ def _run(args, evo: EVO4Controller):
             evo.set_mute(args.target, args.value)
             print(f"[SET] Mute {args.target}: {'1' if args.value else '0'}")
 
-        elif args.parameter == "mix":
-            evo.set_mix(args.value)
-            print(f"[SET] Mix: {args.value}% (0=input, 100=playback)")
+        elif args.parameter == "monitor":
+            evo.set_monitor(args.value)
+            print(f"[SET] Monitor: {args.value}% (0=input, 100=playback)")
 
         elif args.parameter == "phantom":
             evo.set_phantom(args.target, args.value)

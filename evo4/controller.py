@@ -288,14 +288,14 @@ class EVO4Controller:
         if not exists("/dev/evo4"):
             raise RuntimeError("evo4_raw kernel module not loaded (/dev/evo4 not found)")
 
-    def get_mix(self) -> int:
+    def get_monitor(self) -> int:
         """Get monitor mix ratio (0=input only, 100=playback only)."""
         with self._device() as fd:
             data = kmod.get_cur(fd, wValue=self._EU56_WVALUE, wIndex=self._EU56_WINDEX, length=2)
             raw = int.from_bytes(data[:2], "little")
             return round(raw * 100 / 127)
 
-    def set_mix(self, ratio: int) -> None:
+    def set_monitor(self, ratio: int) -> None:
         """Set monitor mix ratio (0=input only, 100=playback only)."""
         with self._device() as fd:
             raw = max(0, min(127, round(ratio * 127 / 100)))
