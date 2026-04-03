@@ -6,8 +6,6 @@ Original Audient EVO (4) app is Windows/macOS only and existing attempts to reve
 
 **How?** A small kernel module binds to the EVO 4's unused DFU interface to send USB control messages, coexisting with `snd-usb-audio`. Audio streaming is never interrupted.
 
-## Screenshots
-
 | Controls | Loopback Mixer |
 |----------|----------------|
 | ![TUI controls](screenshots/tui_controls.jpg) | ![TUI mixer](screenshots/tui_mixer.jpg) |
