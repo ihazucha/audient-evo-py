@@ -2,7 +2,7 @@
 
 Audient EVO4 control app only releases for Windows/macOS and existing attempts to reverse-engineer it were incomplete and abandoned (now LLMs make the boring part of it fun).
 
-`evoctl and evotui` allows live configuring of the device without the need to swap drivers or otherwise interrupt audio streaming.
+`evoctl` and `evotui` allow live config of the device without a need to swap drivers or otherwise interrupt audio streaming.
 
 **How it works?** A small kernel module binds to the EVO 4's unused DFU interface to send USB control transfers, coexisting with `snd-usb-audio`. Audio streaming is never interrupted.
 
