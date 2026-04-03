@@ -64,64 +64,44 @@ See [wireplumber/README.md](wireplumber/README.md) for signal flow diagrams and 
 
 ## Usage
 
-### CLI
-
 ```bash
-# Output volume (dB or 0-100)
-evoctl set volume -20
+# --- CLI ---
+evoctl set volume -20        # dB or 0-100
 evoctl get volume
-
-# Input gain per-channel
-evoctl set gain 50 -t input1
+evoctl set gain 50 -t input1 # input gain per-channel
 evoctl get gain
-
-# Monitor mix (0=input only, 100=playback only)
-evoctl set monitor 50
+evoctl set monitor 50        # 0=input only, 100=playback only
 evoctl get monitor
-
-# Mute
 evoctl set mute on -t output
 evoctl get mute -t input1
-
-# Phantom power (48V)
 evoctl set phantom on -t input1
 evoctl get phantom -t input1
 
-# Loopback mixer - route inputs/playback to loopback capture
+# loopback mixer - route inputs/playback to loopback capture
 evoctl mixer input1 --volume -6 --pan 0
 evoctl mixer output --volume -6 --pan-l -100 --pan-r 100
 evoctl mixer loopback --volume -128
 
-# Show all parameters
 evoctl status
 evoctl status -f json
-
-# Save / Load
 evoctl save .config/audient-evo-py/config.json
-evoctl load 
-```
+evoctl load
 
-### TUI
-
-```bash
+# --- TUI ---
 python -m tui
-
-# or after pipx install
-
-evotui 
+# or simply (after pipx install)
+evotui
 ```
 
-### Saved state
-
-Mixer settings are write-only - to preserve them a `~/.config/audient-evo-py/.mixer-state.json` file is updated on every mixer change. Device controls can be saved and loaded using CLI/TUI.
+Mixer settings are write-only; changes are auto-saved to `~/.config/audient-evo-py/.mixer-state.json`. Device controls can be saved/loaded via CLI or TUI.
 
 ## Components
 
 | Component | Description |
 |-----------|-------------|
 | `kmod/` | Out-of-tree kernel module (`evo4_raw.c`), exposes `/dev/evo4` |
-| `evo4` | backend - kmod wrapper and controller |
-| `tui` | Terminal UI using curses |
+| `evo4/` | backend - kmod wrapper and controller |
+| `tui/` | Terminal UI using curses |
 | `wireplumber/` | PipeWire + WirePlumber config for correct channel mapping |
 
 See [DESIGN.md](DESIGN.md) for architecture, protocol, and USB entity details.
