@@ -485,6 +485,7 @@ class EvoTUI:
         tabs_w = len(ctrl_label) + 1 + len(mix_label)
         tab_x = cx + (content_w - tabs_w) // 2
         dim = curses.color_pair(C_WHITE) | curses.A_DIM
+        self._safe(scr, row, cx, "EVO 4", dim)
         if self._window == "controls":
             ctrl_attr = curses.A_REVERSE | curses.A_BOLD
             mix_attr = dim
