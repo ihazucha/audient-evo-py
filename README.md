@@ -1,10 +1,10 @@
 # audient-evo-py
 
-Audient EVO4 control app only releases for Windows/macOS and existing attempts to reverse-engineer it were incomplete and abandoned (now LLMs make the boring part of it fun).
+Original Audient EVO (4) app is Windows/macOS only and existing attempts to reverse-engineer it were incomplete and abandoned (now LLMs make the boring part of it fun).
 
 `evoctl` and `evotui` allow live config of the device without a need to swap drivers or otherwise interrupt audio streaming.
 
-**How it works?** A small kernel module binds to the EVO 4's unused DFU interface to send USB control transfers, coexisting with `snd-usb-audio`. Audio streaming is never interrupted.
+**How?** A small kernel module binds to the EVO 4's unused DFU interface to send USB control messages, coexisting with `snd-usb-audio`. Audio streaming is never interrupted.
 
 ## Screenshots
 
@@ -12,43 +12,13 @@ Audient EVO4 control app only releases for Windows/macOS and existing attempts t
 |----------|----------------|
 | ![TUI controls](screenshots/tui_controls.jpg) | ![TUI mixer](screenshots/tui_mixer.jpg) |
 
-```
-audient-evo-py master ❯ evoctl set volume -20
-[SET] Volume: -20.00 dB  (raw=0xEC00)
-
-audient-evo-py master ❯ evoctl set gain 50 -t input1
-[SET] Gain input1: +50.00 dB  (raw=0x3200)
-
-audient-evo-py master ❯ evoctl set monitor 50
-[SET] Monitor: 50% (0=input, 100=playback)
-
-audient-evo-py master ❯ evoctl status -f json
-{
-  "monitor": 50,
-  "output": {
-    "volume": -20.0,
-    "mute": false
-  },
-  "input1": {
-    "gain": 50.0,
-    "mute": false,
-    "phantom": false
-  },
-  "input2": {
-    "gain": -8.0,
-    "mute": false,
-    "phantom": false
-  }
-}
-```
-
 ## Requirements
 
 - Linux with `snd-usb-audio` (standard kernel audio)
 - Kernel headers (`linux-headers` package) and DKMS - for the kernel module
 - Python 3.10+ - the only runtime dependency; `pipx` is recommended for install
 
-`pytest` is used for tests (no extra dependencies otherwise).
+`pytest` is used for tests.
 
 ## Install
 
@@ -62,16 +32,9 @@ cd kmod
 sudo ./install.sh
 ```
 
-To uninstall:
-
-```bash
-cd kmod
-sudo ./uninstall.sh
-```
-
 ### evoctl / evotui
 
-No external Python dependencies. Run directly from the repo:
+No external Python dependencies. Runs directly from the repo:
 
 ```bash
 python evoctl.py set volume 75
@@ -134,11 +97,11 @@ evoctl mixer loopback --volume -128
 # Show all parameters
 evoctl status
 evoctl status -f json
-```
 
-Targets for mute: `input1`, `input2`, `output`. Targets for phantom: `input1`, `input2`.
-Mixer volume range: [-128, 8] dB (-128 = mute). Pan: -100 (left) to 100 (right).
-Aliases: `g` for `get`, `s` for `set`, `m` for `mixer`.
+# Save / Load
+evoctl save .config/audient-evo-py/config.json
+evoctl load 
+```
 
 ### TUI
 
@@ -148,9 +111,7 @@ evotui
 
 ### Saved state
 
-Mixer settings are saved to `~/.config/audient-evo-py/.mixer-state.json` and updated on
-every mixer change. The EVO 4 does not expose a readable register for mixer state over USB,
-so this file is the authoritative source for loopback mixer values between sessions.
+Mixer settings are write-only - to preserve them a `~/.config/audient-evo-py/.mixer-state.json` file is updated on every mixer change. Device controls can be saved and loaded using CLI/TUI.
 
 ## Components
 
@@ -165,7 +126,7 @@ See [DESIGN.md](DESIGN.md) for architecture, protocol, and USB entity details.
 
 ## Related Projects
 
-Existing (partial) implementation that did not solve the problem as I imagined (no need for driver swap in particular) but were helpful in creating this.
+Existing implementations - partially working with quirks and caveats (need to swap driver to change setting in particular) but helpful nonetheless.
 
 - [subsubl/Evo4mixer](https://github.com/subsubl/Evo4mixer)
 - [vijay-prema/audient-evo-linux-tools](https://github.com/vijay-prema/audient-evo-linux-tools/tree/main)
@@ -174,10 +135,9 @@ Existing (partial) implementation that did not solve the problem as I imagined (
 - [charlesmulder/alsa-audient-id14](https://github.com/charlesmulder/alsa-audient-id14)
 - [r00tman/mymixer](https://github.com/r00tman/mymixer)
 
-## Other Audient / EVO Devices
+## Notice
 
-I'm looking to extend support to other Audient EVO and ID-series devices. If you own one
-and are willing to cooperate or lend hardware, please open an issue.
+If demand arises I like to support other Audient EVO (possibly other devices). If you own one and are willing to cooperate, please open an issue.
 
 ## License
 
