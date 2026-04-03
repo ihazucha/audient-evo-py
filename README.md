@@ -2,9 +2,9 @@
 
 Original Audient EVO (4) app is Windows/macOS only and existing attempts to reverse-engineer it were incomplete and abandoned (now LLMs make the boring part of it fun).
 
-`evoctl` and `evotui` allow live config of the device without a need to swap drivers or otherwise interrupt audio streaming.
+CLI `evoctl` and TUI `evotui` allow live config of the device without a need to swap drivers or otherwise interrupt audio streaming.
 
-**How?** A small kernel module binds to the EVO 4's unused DFU interface to send USB control messages, coexisting with `snd-usb-audio`. Audio streaming is never interrupted.
+**How?** A small kernel module binds to the EVO 4's unused DFU interface to send USB control messages, coexisting with `snd-usb-audio`.
 
 | Controls | Loopback Mixer |
 |----------|----------------|
@@ -62,20 +62,15 @@ bash wireplumber/evo4-setup-install.sh
 
 See [wireplumber/README.md](wireplumber/README.md) for signal flow diagrams and details.
 
-## Usage
+## Usage (examples)
 
 ```bash
 # --- CLI ---
 evoctl set volume -20        # dB or 0-100
-evoctl get volume
 evoctl set gain 50 -t input1 # input gain per-channel
-evoctl get gain
 evoctl set monitor 50        # 0=input only, 100=playback only
-evoctl get monitor
 evoctl set mute on -t output
-evoctl get mute -t input1
 evoctl set phantom on -t input1
-evoctl get phantom -t input1
 
 # loopback mixer - route inputs/playback to loopback capture
 evoctl mixer input1 --volume -6 --pan 0
