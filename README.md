@@ -104,7 +104,11 @@ evoctl load
 ### TUI
 
 ```bash
-evotui
+python -m tui
+
+# or after pipx install
+
+evotui 
 ```
 
 ### Saved state
