@@ -120,8 +120,8 @@ Mixer settings are write-only - to preserve them a `~/.config/audient-evo-py/.mi
 | Component | Description |
 |-----------|-------------|
 | `kmod/` | Out-of-tree kernel module (`evo4_raw.c`), exposes `/dev/evo4` |
-| `evoctl` | CLI - get/set all device parameters |
-| `evotui` | Terminal UI |
+| `evo4` | backend - kmod wrapper and controller |
+| `tui` | Terminal UI using curses |
 | `wireplumber/` | PipeWire + WirePlumber config for correct channel mapping |
 
 See [DESIGN.md](DESIGN.md) for architecture, protocol, and USB entity details.
