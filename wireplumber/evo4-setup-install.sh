@@ -20,7 +20,6 @@ BACKUP_DIR="$HOME/.config/evo4-audio-backup/$(date +%Y%m%d-%H%M%S)"
 PW_CONF="$HOME/.config/pipewire/pipewire.conf.d"
 PW_PULSE="$HOME/.config/pipewire/pipewire-pulse.conf.d"
 WP_CONF="$HOME/.config/wireplumber/wireplumber.conf.d"
-WP_LUA="$HOME/.config/wireplumber/main.lua.d"
 SYSTEMD_USER="$HOME/.config/systemd/user"
 LOCAL_BIN="$HOME/.local/bin"
 

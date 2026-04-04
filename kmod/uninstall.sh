@@ -35,4 +35,16 @@ if [[ -f /etc/udev/rules.d/99-evo4.rules ]]; then
   udevadm control --reload-rules
 fi
 
+# Remove systemd user service if installed
+if [[ -n "${SUDO_USER:-}" ]]; then
+  TARGET_USER="$SUDO_USER"
+  TARGET_HOME=$(eval echo ~"$TARGET_USER")
+  SYSTEMD_SERVICE="$TARGET_HOME/.config/systemd/user/evo4-load-config.service"
+
+  if [[ -f "$SYSTEMD_SERVICE" ]]; then
+    echo "Removing systemd service for user '$TARGET_USER'..."
+    rm "$SYSTEMD_SERVICE"
+  fi
+fi
+
 echo "Done. ${MODULE_NAME} has been fully removed."

@@ -1,2 +1,3 @@
 # Allow users in the "dialout" group to access /dev/evo4
-KERNEL=="evo4", SUBSYSTEM=="misc", GROUP="dialout", MODE="0660"
+KERNEL=="evo4", SUBSYSTEM=="misc", GROUP="dialout", MODE="0660", \
+  TAG+="systemd", ENV{SYSTEMD_USER_WANTS}="evo4-load-config.service"

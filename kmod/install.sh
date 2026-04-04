@@ -60,6 +60,46 @@ udevadm control --reload-rules
 echo "Loading module..."
 modprobe "$MODULE_NAME"
 
+# Optional: Setup auto-load config on device connection
+echo ""
+read -p "Enable auto-load of saved config when device is connected? (y/n) " -n 1 -r SETUP_AUTOLOAD
+echo ""
+
+if [[ $SETUP_AUTOLOAD =~ ^[Yy]$ ]]; then
+    if [[ -n "${SUDO_USER:-}" ]]; then
+        TARGET_USER="$SUDO_USER"
+    else
+        echo "Error: Could not determine user (not run via sudo?)."
+        echo "Skipping auto-load setup."
+    fi
+
+    if [[ -n "${TARGET_USER:-}" ]]; then
+        TARGET_HOME=$(eval echo ~"$TARGET_USER")
+        EVOCTL_PATH="/home/$TARGET_USER/.local/bin/evoctl"
+
+        # Check if evoctl is available in TARGET_USER's environment
+        if [[ -f $EVOCTL_PATH ]]; then
+            SYSTEMD_USER_DIR="$TARGET_HOME/.config/systemd/user"
+            echo "Setting up auto-load for user: $TARGET_USER"
+            echo "  Service file: $SYSTEMD_USER_DIR/evo4-load-config.service"
+
+            # Install the service file
+            mkdir -p "$SYSTEMD_USER_DIR"
+            cp "$SCRIPT_DIR/evo4-load-config.service" "$SYSTEMD_USER_DIR/"
+            chown "$TARGET_USER:$TARGET_USER" "$SYSTEMD_USER_DIR/evo4-load-config.service"
+
+            echo "Auto-load config enabled."
+            echo ""
+            echo "To test, reconnect your EVO4 device."
+            echo "View logs with: journalctl --user -u evo4-load-config.service -f"
+        else
+            echo "Error: 'evoctl' not found in $TARGET_USER's PATH."
+            echo "Install it first with: pipx install ."
+            echo "Skipping auto-load setup."
+        fi
+    fi
+fi
+
 echo ""
 echo "Done. ${MODULE_NAME} is installed and loaded."
 echo "Users in the 'dialout' group can access /dev/evo4 when the device is connected."
