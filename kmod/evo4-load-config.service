@@ -1,10 +1,12 @@
 [Unit]
 Description=Load Audient EVO4 configuration on device connection
-BindsTo=dev-evo4.device
-After=dev-evo4.device
+ConditionPathExists=/dev/evo4
 
 [Service]
 Type=oneshot
 ExecStart=%h/.local/bin/evoctl load
 StandardOutput=journal
 StandardError=journal
+
+[Install]
+WantedBy=default.target

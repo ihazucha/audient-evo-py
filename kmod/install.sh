@@ -75,7 +75,7 @@ if [[ $SETUP_AUTOLOAD =~ ^[Yy]$ ]]; then
 
     if [[ -n "${TARGET_USER:-}" ]]; then
         TARGET_HOME=$(eval echo ~"$TARGET_USER")
-        EVOCTL_PATH="/home/$TARGET_USER/.local/bin/evoctl"
+        EVOCTL_PATH="$TARGET_HOME/.local/bin/evoctl"
 
         # Check if evoctl is available in TARGET_USER's environment
         if [[ -f $EVOCTL_PATH ]]; then
@@ -84,13 +84,18 @@ if [[ $SETUP_AUTOLOAD =~ ^[Yy]$ ]]; then
             echo "  Service file: $SYSTEMD_USER_DIR/evo4-load-config.service"
 
             # Install the service file
-            mkdir -p "$SYSTEMD_USER_DIR"
-            cp "$SCRIPT_DIR/evo4-load-config.service" "$SYSTEMD_USER_DIR/"
-            chown "$TARGET_USER:$TARGET_USER" "$SYSTEMD_USER_DIR/evo4-load-config.service"
+            install -D -o "$TARGET_USER" -g "$TARGET_USER" -m 644 \
+                "$SCRIPT_DIR/evo4-load-config.service" \
+                "$SYSTEMD_USER_DIR/evo4-load-config.service"
+
+            # Enable the service so it also runs at login if device is already connected
+            TARGET_UID=$(id -u "$TARGET_USER")
+            sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$TARGET_UID" systemctl --user daemon-reload
+            sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$TARGET_UID" systemctl --user enable evo4-load-config.service
 
             echo "Auto-load config enabled."
             echo ""
-            echo "To test, reconnect your EVO4 device."
+            echo "To test, reconnect your EVO4 device or log out and back in."
             echo "View logs with: journalctl --user -u evo4-load-config.service -f"
         else
             echo "Error: 'evoctl' not found in $TARGET_USER's PATH."
