@@ -1,4 +1,4 @@
-obj-m := evo4_raw.o
+obj-m := evo_raw.o
 
 KDIR ?= /lib/modules/$(shell uname -r)/build
 

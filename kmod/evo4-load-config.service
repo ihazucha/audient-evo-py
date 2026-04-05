@@ -4,7 +4,7 @@ ConditionPathExists=/dev/evo4
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/bin/evoctl load
+ExecStart=%h/.local/bin/evoctl --device evo4 load
 StandardOutput=journal
 StandardError=journal
 

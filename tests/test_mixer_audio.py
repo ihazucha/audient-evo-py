@@ -19,7 +19,8 @@ import numpy as np
 import pytest
 import sounddevice as sd
 
-from evo4.controller import EVO4Controller, _MIXER_DB_MIN
+from evo.controller import EVOController, _MIXER_DB_MIN
+from evo.devices import EVO4
 
 # ── Audio constants ──────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ def levels(captured):
 
 @pytest.fixture(scope="module")
 def evo():
-    return EVO4Controller()
+    return EVOController(EVO4)
 
 
 @pytest.fixture(scope="module")

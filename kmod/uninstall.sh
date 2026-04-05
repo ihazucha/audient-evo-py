@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-MODULE_NAME="evo4_raw"
+MODULE_NAME="evo_raw"
 MODULE_VERSION="0.1"
 SRC_DIR="/usr/src/${MODULE_NAME}-${MODULE_VERSION}"
 
@@ -16,35 +16,53 @@ if lsmod | grep -q "^${MODULE_NAME}"; then
   rmmod "$MODULE_NAME"
 fi
 
+# Also unload legacy module
+if lsmod | grep -q "^evo4_raw"; then
+  echo "Unloading legacy evo4_raw module..."
+  rmmod evo4_raw
+fi
+
 # Remove from DKMS
 if command -v dkms &>/dev/null && dkms status "${MODULE_NAME}/${MODULE_VERSION}" 2>/dev/null | grep -q "${MODULE_NAME}"; then
   echo "Removing from DKMS..."
   dkms remove "${MODULE_NAME}/${MODULE_VERSION}" --all
 fi
 
+# Remove legacy DKMS
+if command -v dkms &>/dev/null && dkms status "evo4_raw/${MODULE_VERSION}" 2>/dev/null | grep -q "evo4_raw"; then
+  echo "Removing legacy evo4_raw from DKMS..."
+  dkms remove "evo4_raw/${MODULE_VERSION}" --all
+fi
+
 # Remove source
-if [[ -d "$SRC_DIR" ]]; then
-  echo "Removing source from ${SRC_DIR}..."
-  rm -rf "$SRC_DIR"
-fi
+for src in "$SRC_DIR" "/usr/src/evo4_raw-${MODULE_VERSION}"; do
+  if [[ -d "$src" ]]; then
+    echo "Removing source from ${src}..."
+    rm -rf "$src"
+  fi
+done
 
-# Remove udev rule
-if [[ -f /etc/udev/rules.d/99-evo4.rules ]]; then
-  echo "Removing udev rule..."
-  rm /etc/udev/rules.d/99-evo4.rules
-  udevadm control --reload-rules
-fi
+# Remove udev rules
+for rules in 99-evo4.rules 99-evo8.rules; do
+  if [[ -f "/etc/udev/rules.d/${rules}" ]]; then
+    echo "Removing udev rule ${rules}..."
+    rm "/etc/udev/rules.d/${rules}"
+  fi
+done
+udevadm control --reload-rules 2>/dev/null || true
 
-# Remove systemd user service if installed
+# Remove systemd user services if installed
 if [[ -n "${SUDO_USER:-}" ]]; then
   TARGET_USER="$SUDO_USER"
   TARGET_HOME=$(eval echo ~"$TARGET_USER")
-  SYSTEMD_SERVICE="$TARGET_HOME/.config/systemd/user/evo4-load-config.service"
 
-  if [[ -f "$SYSTEMD_SERVICE" ]]; then
-    echo "Removing systemd service for user '$TARGET_USER'..."
-    rm "$SYSTEMD_SERVICE"
-  fi
+  for service in evo4-load-config.service evo8-load-config.service; do
+    SYSTEMD_SERVICE="$TARGET_HOME/.config/systemd/user/${service}"
+    if [[ -f "$SYSTEMD_SERVICE" ]]; then
+      echo "Removing systemd service ${service} for user '$TARGET_USER'..."
+      rm "$SYSTEMD_SERVICE"
+    fi
+  done
 fi
 
 echo "Done. ${MODULE_NAME} has been fully removed."

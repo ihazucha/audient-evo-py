@@ -1,18 +1,15 @@
-"""Curses TUI for Audient EVO4"""
+"""Curses TUI for Audient EVO devices"""
 
 import curses
 import sys
 
-from evo4.controller import (
-    EVO4Controller,
-    _VOL_DB_MIN,
-    _VOL_DB_MAX,
-    _GAIN_DB_MIN,
-    _GAIN_DB_MAX,
+from evo.controller import (
+    EVOController,
     _MIXER_DB_MIN,
     _MIXER_DB_MAX,
 )
-from evo4 import config as cfg
+from evo.devices import DeviceSpec, detect_devices, DEVICES
+from evo import config as cfg
 
 C_GREEN, C_RED, C_CYAN, C_YELLOW, C_WHITE, C_BLUE = range(1, 7)
 
@@ -21,47 +18,45 @@ BOX_IW = SLIDER_W + 2
 SLIDER_OFF = 2
 PICKER_LIST_H = 6
 
-# Focusable elements: (state_key, value_key, section_label, slider_color)
-ELEMENTS = [
-    ("output", "volume", "OUTPUT", C_GREEN),
-    ("input1", "gain", "INPUT 1", C_BLUE),
-    ("input2", "gain", "INPUT 2", C_BLUE),
-    ("monitor", None, "MONITOR", C_CYAN),
-]
-
-# Value ranges: (min, max, step)
-RANGES = {
-    "output": (_VOL_DB_MIN, _VOL_DB_MAX, 1.0),
-    "input1": (_GAIN_DB_MIN, _GAIN_DB_MAX, 1.0),
-    "input2": (_GAIN_DB_MIN, _GAIN_DB_MAX, 1.0),
-    "monitor": (0, 100, 1),
-}
-
 PAN_MIN, PAN_MAX, PAN_STEP = -100.0, 100.0, 5.0
 MIXER_SECTION_IW = 17
 MIXER_PAN_HALF = 7  # half-width of narrow pan slider (total = 2*HALF+1 = 15)
 
-# (key, label, color, sliders[])  slider: (param, label, min, max, step)
-MIXER_SECTIONS = [
-    (
-        "input1",
-        "INPUT 1",
-        C_BLUE,
-        [
-            ("pan", "Pan", PAN_MIN, PAN_MAX, PAN_STEP),
-            ("volume", "Vol", _MIXER_DB_MIN, _MIXER_DB_MAX, 1.0),
-        ],
-    ),
-    (
-        "input2",
-        "INPUT 2",
-        C_BLUE,
-        [
-            ("pan", "Pan", PAN_MIN, PAN_MAX, PAN_STEP),
-            ("volume", "Vol", _MIXER_DB_MIN, _MIXER_DB_MAX, 1.0),
-        ],
-    ),
-    (
+
+def _build_elements(spec: DeviceSpec):
+    """Build focusable elements list from device spec."""
+    elements = [("output", "volume", "OUTPUT", C_GREEN)]
+    for i in range(spec.num_inputs):
+        elements.append((f"input{i+1}", "gain", f"INPUT {i+1}", C_BLUE))
+    if spec.has_monitor:
+        elements.append(("monitor", None, "MONITOR", C_CYAN))
+    return elements
+
+
+def _build_ranges(spec: DeviceSpec):
+    """Build value ranges dict from device spec."""
+    ranges = {"output": (spec.vol_db_min, spec.vol_db_max, 1.0)}
+    for i in range(spec.num_inputs):
+        ranges[f"input{i+1}"] = (spec.gain_db_min, spec.gain_db_max, 1.0)
+    if spec.has_monitor:
+        ranges["monitor"] = (0, 100, 1)
+    return ranges
+
+
+def _build_mixer_sections(spec: DeviceSpec):
+    """Build mixer sections list from device spec."""
+    sections = []
+    for i in range(spec.num_inputs):
+        sections.append((
+            f"input{i+1}",
+            f"INPUT {i+1}",
+            C_BLUE,
+            [
+                ("pan", "Pan", PAN_MIN, PAN_MAX, PAN_STEP),
+                ("volume", "Vol", _MIXER_DB_MIN, _MIXER_DB_MAX, 1.0),
+            ],
+        ))
+    sections.append((
         "main",
         "MAIN OUT 1|2",
         C_GREEN,
@@ -70,8 +65,8 @@ MIXER_SECTIONS = [
             ("pan_r", "Pan R", PAN_MIN, PAN_MAX, PAN_STEP),
             ("volume", "Vol", _MIXER_DB_MIN, _MIXER_DB_MAX, 1.0),
         ],
-    ),
-    (
+    ))
+    sections.append((
         "loopback",
         "LOOP OUT 1|2",
         C_YELLOW,
@@ -80,18 +75,24 @@ MIXER_SECTIONS = [
             ("pan_r", "Pan R", PAN_MIN, PAN_MAX, PAN_STEP),
             ("volume", "Vol", _MIXER_DB_MIN, _MIXER_DB_MAX, 1.0),
         ],
-    ),
-]
+    ))
+    return sections
 
-_max_pan = max(sum(1 for s in sec[3] if s[0].startswith("pan")) for sec in MIXER_SECTIONS)
-MIXER_SECTION_H = _max_pan * 2 + 5
-CONTROLS_BODY_H = len(ELEMENTS) * 4 + (len(ELEMENTS) - 1)
-TOTAL_H = 2 + CONTROLS_BODY_H + 2
+
+def _build_mixer_state(spec: DeviceSpec):
+    """Build initial mixer state dict from device spec."""
+    state = {}
+    for i in range(spec.num_inputs):
+        state[f"input{i+1}"] = {"volume": -128.0, "pan": 0.0}
+    state["main"] = {"volume": -128.0, "pan_l": -100.0, "pan_r": 100.0}
+    state["loopback"] = {"volume": -128.0, "pan_l": -100.0, "pan_r": 100.0}
+    return state
 
 
 class EvoTUI:
-    def __init__(self, evo: EVO4Controller):
+    def __init__(self, evo: EVOController):
         self.evo = evo
+        self.spec = evo.spec
         self.cursor = 0
         self.status = ""
         self.status_err = False
@@ -104,14 +105,24 @@ class EvoTUI:
         self._file_input = ""
         self._slider_map = []
         self._box_attr = 0
+
+        # Build dynamic layout from spec
+        self._elements = _build_elements(self.spec)
+        self._ranges = _build_ranges(self.spec)
+        self._mixer_sections = _build_mixer_sections(self.spec)
+
         self._mixer_section = 0
-        self._mixer_param = len(MIXER_SECTIONS[0][3]) - 1
-        self._mixer_state = {
-            "input1": {"volume": -128.0, "pan": 0.0},
-            "input2": {"volume": -128.0, "pan": 0.0},
-            "main": {"volume": -128.0, "pan_l": -100.0, "pan_r": 100.0},
-            "loopback": {"volume": -128.0, "pan_l": -100.0, "pan_r": 100.0},
-        }
+        self._mixer_param = len(self._mixer_sections[0][3]) - 1
+        self._mixer_state = _build_mixer_state(self.spec)
+
+        self._max_pan = max(
+            sum(1 for s in sec[3] if s[0].startswith("pan")) for sec in self._mixer_sections
+        )
+        self._mixer_section_h = self._max_pan * 2 + 5
+        self._controls_body_h = len(self._elements) * 4 + (len(self._elements) - 1)
+        self._total_h = 2 + self._controls_body_h + 2
+
+        self._config_dir = cfg._device_dir(self.spec.name)
         self._load_mixer_state()
         self._sync()
 
@@ -119,7 +130,7 @@ class EvoTUI:
 
     def _sync(self):
         try:
-            self.state = EVO4Controller.decode_status(self.evo.get_status_raw())
+            self.state = self.evo.decode_status(self.evo.get_status_raw())
         except OSError as e:
             self._set_status(f"USB error: {e}", err=True)
 
@@ -129,38 +140,38 @@ class EvoTUI:
     def _val(self, idx=None):
         if idx is None:
             idx = self.cursor
-        key, sub = ELEMENTS[idx][:2]
+        key, sub = self._elements[idx][:2]
         return self.state[key] if sub is None else self.state[key][sub]
 
     def _frac(self, idx):
-        key = ELEMENTS[idx][0]
-        lo, hi, _ = RANGES[key]
+        key = self._elements[idx][0]
+        lo, hi, _ = self._ranges[key]
         return max(0.0, min(1.0, (self._val(idx) - lo) / (hi - lo)))
 
     def _muted(self, idx):
-        key = ELEMENTS[idx][0]
+        key = self._elements[idx][0]
         return self.state[key].get("mute", False) if key != "monitor" else False
 
     def _has_mute(self, idx):
-        return ELEMENTS[idx][0] != "monitor"
+        return self._elements[idx][0] != "monitor"
 
     def _has_phantom(self, idx):
-        return ELEMENTS[idx][0].startswith("input")
+        return self._elements[idx][0].startswith("input")
 
     def _is_db(self, idx=None):
-        return ELEMENTS[self.cursor if idx is None else idx][0] != "monitor"
+        return self._elements[self.cursor if idx is None else idx][0] != "monitor"
 
     def _current_unit(self):
         if self._window == "controls":
             return "dB" if self._is_db() else "%"
-        param = MIXER_SECTIONS[self._mixer_section][3][self._mixer_param][0]
+        param = self._mixer_sections[self._mixer_section][3][self._mixer_param][0]
         return "dB" if param == "volume" else ""
 
     # -- controls actions --
 
     def _set_val(self, val):
-        key, sub = ELEMENTS[self.cursor][:2]
-        lo, hi, _ = RANGES[key]
+        key, sub = self._elements[self.cursor][:2]
+        lo, hi, _ = self._ranges[key]
         val = max(lo, min(hi, val))
         try:
             if key == "monitor":
@@ -177,11 +188,11 @@ class EvoTUI:
             self._set_status(f"Error: {e}", err=True)
 
     def _adjust(self, delta):
-        _, _, step = RANGES[ELEMENTS[self.cursor][0]]
+        _, _, step = self._ranges[self._elements[self.cursor][0]]
         self._set_val(self._val() + delta * step)
 
     def _toggle_mute(self):
-        key = ELEMENTS[self.cursor][0]
+        key = self._elements[self.cursor][0]
         if key == "monitor":
             return
         try:
@@ -192,7 +203,7 @@ class EvoTUI:
             self._set_status(f"Error: {e}", err=True)
 
     def _toggle_phantom(self):
-        key = ELEMENTS[self.cursor][0]
+        key = self._elements[self.cursor][0]
         if not key.startswith("input"):
             return
         try:
@@ -206,49 +217,51 @@ class EvoTUI:
 
     def _load_mixer_state(self):
         """Load mixer state from disk into TUI state (maps 'output' key to 'main')."""
-        data = cfg.load_mixer_state()
+        data = cfg.load_mixer_state(self.spec.name)
         if data is None:
             return
-        for key in ("input1", "input2", "loopback"):
+        for i in range(self.spec.num_inputs):
+            key = f"input{i+1}"
             if key in data:
                 self._mixer_state[key].update(data[key])
         if "output" in data:
             self._mixer_state["main"].update(data["output"])
+        if "loopback" in data:
+            self._mixer_state["loopback"].update(data["loopback"])
 
     def _save_mixer_state(self):
         """Persist TUI mixer state to disk (maps 'main' key to 'output')."""
-        data = {
-            "input1": dict(self._mixer_state["input1"]),
-            "input2": dict(self._mixer_state["input2"]),
-            "output": dict(self._mixer_state["main"]),
-            "loopback": dict(self._mixer_state["loopback"]),
-        }
-        cfg.save_mixer_state(data)
+        data = {}
+        for i in range(self.spec.num_inputs):
+            key = f"input{i+1}"
+            data[key] = dict(self._mixer_state[key])
+        data["output"] = dict(self._mixer_state["main"])
+        data["loopback"] = dict(self._mixer_state["loopback"])
+        cfg.save_mixer_state(self.spec.name, data)
 
     # -- mixer actions --
 
     def _mixer_val(self):
-        key = MIXER_SECTIONS[self._mixer_section][0]
-        param = MIXER_SECTIONS[self._mixer_section][3][self._mixer_param][0]
+        key = self._mixer_sections[self._mixer_section][0]
+        param = self._mixer_sections[self._mixer_section][3][self._mixer_param][0]
         return self._mixer_state[key][param]
 
     def _mixer_set_val(self, val):
-        key, _, _, sliders = MIXER_SECTIONS[self._mixer_section]
+        key, _, _, sliders = self._mixer_sections[self._mixer_section]
         param, _, lo, hi, _ = sliders[self._mixer_param]
         self._mixer_state[key][param] = max(lo, min(hi, val))
         self._apply_mixer(key)
 
     def _mixer_adjust(self, delta):
-        _, _, _, _, step = MIXER_SECTIONS[self._mixer_section][3][self._mixer_param]
+        _, _, _, _, step = self._mixer_sections[self._mixer_section][3][self._mixer_param]
         self._mixer_set_val(self._mixer_val() + delta * step)
 
     def _apply_mixer(self, key):
         try:
             s = self._mixer_state[key]
-            if key == "input1":
-                self.evo.set_mixer_input(1, s["volume"], s["pan"])
-            elif key == "input2":
-                self.evo.set_mixer_input(2, s["volume"], s["pan"])
+            if key.startswith("input"):
+                input_num = int(key[5:])
+                self.evo.set_mixer_input(input_num, s["volume"], s["pan"])
             elif key == "main":
                 self.evo.set_mixer_output(s["volume"], s["pan_l"], s["pan_r"])
             elif key == "loopback":
@@ -260,7 +273,7 @@ class EvoTUI:
     # -- file picker --
 
     def _scan_files(self):
-        d = cfg.CONFIG_DIR
+        d = self._config_dir
         return (
             sorted(f for f in d.glob("*.json") if not f.name.startswith(".")) if d.exists() else []
         )
@@ -274,7 +287,7 @@ class EvoTUI:
     def _enter_load_mode(self):
         files = self._scan_files()
         if not files:
-            self._set_status(f"No configs in {cfg.CONFIG_DIR}", err=True)
+            self._set_status(f"No configs in {self._config_dir}", err=True)
             return
         self._file_list = files
         self._file_cursor = self._file_scroll = 0
@@ -328,7 +341,7 @@ class EvoTUI:
                     if not name.endswith(".json"):
                         name += ".json"
                     try:
-                        cfg.save(self.evo, cfg.CONFIG_DIR / name)
+                        cfg.save(self.evo, self._config_dir / name)
                         self._set_status(f"Saved \u2192 {name}")
                     except Exception as e:
                         self._set_status(f"Save error: {e}", err=True)
@@ -485,7 +498,7 @@ class EvoTUI:
         tabs_w = len(ctrl_label) + 1 + len(mix_label)
         tab_x = cx + (content_w - tabs_w) // 2
         dim = curses.color_pair(C_WHITE) | curses.A_DIM
-        self._safe(scr, row, cx, "EVO 4", dim)
+        self._safe(scr, row, cx, self.spec.display_name, dim)
         if self._window == "controls":
             ctrl_attr = curses.A_REVERSE | curses.A_BOLD
             mix_attr = dim
@@ -505,7 +518,7 @@ class EvoTUI:
     # -- section drawing (controls) --
 
     def _draw_section(self, scr, row, cx, idx):
-        key, sub, label, color = ELEMENTS[idx]
+        key, sub, label, color = self._elements[idx]
         active = self.cursor == idx
         val = self._val(idx)
         frac = self._frac(idx)
@@ -547,7 +560,7 @@ class EvoTUI:
     # -- mixer section drawing --
 
     def _draw_mixer_section(self, scr, top_row, cx, sec_idx):
-        key, label, color, sliders = MIXER_SECTIONS[sec_idx]
+        key, label, color, sliders = self._mixer_sections[sec_idx]
         sel_sec = self._mixer_section == sec_idx
         pan_params = [(i, s) for i, s in enumerate(sliders) if s[0].startswith("pan")]
         vol_param_idx = next(i for i, s in enumerate(sliders) if s[0] == "volume")
@@ -620,7 +633,7 @@ class EvoTUI:
         row += 1
 
         self._box_side(scr, row, cx)
-        self._safe(scr, row, cx + SLIDER_OFF, f"{cfg.CONFIG_DIR}/"[: BOX_IW - 2], curses.A_DIM)
+        self._safe(scr, row, cx + SLIDER_OFF, f"{self._config_dir}/"[: BOX_IW - 2], curses.A_DIM)
         row += 1
 
         self._box_side(scr, row, cx)
@@ -671,15 +684,15 @@ class EvoTUI:
         h, w = scr.getmaxyx()
         self._slider_map = []
 
-        mixer_w = len(MIXER_SECTIONS) * (MIXER_SECTION_IW + 3) - 1
+        mixer_w = len(self._mixer_sections) * (MIXER_SECTION_IW + 3) - 1
         content_w = max(BOX_IW + 2, mixer_w)
         cx = max(0, (w - content_w) // 2)
 
-        if h < TOTAL_H or w < content_w:
-            self._safe(scr, 0, 0, f"Terminal too small ({w}x{h}, need {content_w}x{TOTAL_H})")
+        if h < self._total_h or w < content_w:
+            self._safe(scr, 0, 0, f"Terminal too small ({w}x{h}, need {content_w}x{self._total_h})")
             return
 
-        row = max(0, (h - TOTAL_H) // 2)
+        row = max(0, (h - self._total_h) // 2)
         section_w = mixer_w if self._window == "mixer" else BOX_IW + 2
         self._draw_tab_bar(scr, row, cx, content_w, section_w)
         row += 2
@@ -692,9 +705,9 @@ class EvoTUI:
         self._draw_status_bar(scr, row, cx)
 
     def _draw_controls_body(self, scr, row, cx):
-        for idx in range(len(ELEMENTS)):
+        for idx in range(len(self._elements)):
             row = self._draw_section(scr, row, cx, idx)
-            if idx < len(ELEMENTS) - 1:
+            if idx < len(self._elements) - 1:
                 row += 1
 
         unit = "dB" if self._is_db() else "%"
@@ -716,11 +729,11 @@ class EvoTUI:
 
     def _draw_mixer_body(self, scr, row, cx):
         sec_ow = MIXER_SECTION_IW + 3
-        for sec_idx in range(len(MIXER_SECTIONS)):
+        for sec_idx in range(len(self._mixer_sections)):
             self._draw_mixer_section(scr, row, cx + sec_idx * sec_ow, sec_idx)
-        row += CONTROLS_BODY_H
+        row += self._controls_body_h
 
-        param = MIXER_SECTIONS[self._mixer_section][3][self._mixer_param][0]
+        param = self._mixer_sections[self._mixer_section][3][self._mixer_param][0]
         if param == "volume":
             help1 = "n/p:section  j/k:param  h/l:\xb11dB (H/L:\xb15dB)"
         else:
@@ -780,9 +793,9 @@ class EvoTUI:
 
     def _controls_key(self, key):
         if key == ord("j"):
-            self.cursor = (self.cursor + 1) % len(ELEMENTS)
+            self.cursor = (self.cursor + 1) % len(self._elements)
         elif key == ord("k"):
-            self.cursor = (self.cursor - 1) % len(ELEMENTS)
+            self.cursor = (self.cursor - 1) % len(self._elements)
         elif key == ord("m"):
             self._toggle_mute()
         elif key == ord("P"):
@@ -791,14 +804,14 @@ class EvoTUI:
             self._handle_adjust(key, self._adjust)
 
     def _mixer_key(self, key):
-        n = len(MIXER_SECTIONS)
-        n_params = len(MIXER_SECTIONS[self._mixer_section][3])
+        n = len(self._mixer_sections)
+        n_params = len(self._mixer_sections[self._mixer_section][3])
         if key == ord("n"):
             self._mixer_section = (self._mixer_section + 1) % n
-            self._mixer_param = len(MIXER_SECTIONS[self._mixer_section][3]) - 1
+            self._mixer_param = len(self._mixer_sections[self._mixer_section][3]) - 1
         elif key == ord("p"):
             self._mixer_section = (self._mixer_section - 1) % n
-            self._mixer_param = len(MIXER_SECTIONS[self._mixer_section][3]) - 1
+            self._mixer_param = len(self._mixer_sections[self._mixer_section][3]) - 1
         elif key == ord("k"):
             self._mixer_param = (self._mixer_param - 1) % n_params
         elif key == ord("j"):
@@ -880,8 +893,18 @@ class EvoTUI:
 
 
 def main():
+    devices = detect_devices()
+    if not devices:
+        print("error: no EVO device found (check /dev/evo*)", file=sys.stderr)
+        sys.exit(1)
+    if len(devices) > 1:
+        print("Multiple devices found. Use --device to select:", file=sys.stderr)
+        for d in devices:
+            print(f"  python -m tui --device {d.name}", file=sys.stderr)
+        sys.exit(1)
+    spec = devices[0]
     try:
-        evo = EVO4Controller()
+        evo = EVOController(spec)
         with evo:
             curses.wrapper(EvoTUI(evo).run)
     except (OSError, RuntimeError) as e:

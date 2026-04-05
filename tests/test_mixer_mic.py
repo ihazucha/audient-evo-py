@@ -23,7 +23,8 @@ import numpy as np
 import pytest
 import sounddevice as sd
 
-from evo4.controller import EVO4Controller, _MIXER_DB_MIN
+from evo.controller import EVOController, _MIXER_DB_MIN
+from evo.devices import EVO4
 
 SAMPLE_RATE = 48000
 CAPTURE_DURATION = 3.0      # seconds to capture while user makes noise
@@ -84,7 +85,7 @@ def prompt_and_capture(pan_desc, loop_cap):
 
 @pytest.fixture(scope="module")
 def evo():
-    return EVO4Controller()
+    return EVOController(EVO4)
 
 
 @pytest.fixture(scope="module")

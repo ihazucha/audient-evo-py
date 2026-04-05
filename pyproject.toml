@@ -3,9 +3,9 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "audient-evo4"
-version = "0.1.0"
-description = "Linux controller for Audient EVO 4 USB audio interface"
+name = "audient-evo"
+version = "0.2.0"
+description = "Linux controller for Audient EVO USB audio interfaces"
 license = "Unlicense"
 requires-python = ">=3.10"
 
@@ -15,7 +15,7 @@ evotui = "tui.app:main"
 
 [tool.setuptools]
 py-modules = ["evoctl"]
-packages = ["evo4", "tui"]
+packages = ["evo", "tui"]
 
 [tool.ruff]
 line-length = 100
