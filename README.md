@@ -36,7 +36,7 @@ No external Python dependencies. Runs directly from the repo:
 
 ```bash
 python evoctl.py set volume 75
-python -m tui.app
+python -m tui
 ```
 
 Or install with `pipx` for system-wide `evoctl` and `evotui` commands:
