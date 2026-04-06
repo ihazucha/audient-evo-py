@@ -127,6 +127,8 @@ done
 
 ### 4f. Phantom power - all 4 inputs
 
+**WARNING:** Only enable phantom if you have condenser mics or no mics connected. Phantom can damage ribbon mics.
+
 ```bash
 for i in input1 input2 input3 input4; do
   evoctl set phantom 1 -t $i
@@ -135,8 +137,6 @@ for i in input1 input2 input3 input4; do
   evoctl get phantom -t $i
 done
 ```
-
-**WARNING:** Only enable phantom if you have condenser mics or no mics connected. Phantom can damage ribbon mics.
 
 ### 4g. Monitor (should fail)
 
@@ -197,23 +197,7 @@ Record the full output. Look for:
 
 Play audio (e.g. `speaker-test -c 2 -t sine -l 1`) and confirm it comes through output 1/2.
 
-## 8. TUI Verification
-
-```bash
-evotui
-# or: python -m tui
-```
-
-Check:
-- [ ] TUI launches without errors
-- [ ] Shows 4 input channels
-- [ ] Shows 2 output pairs
-- [ ] Volume/gain/mute controls respond
-- [ ] Mixer section shows correct dimensions
-
-Screenshot the TUI if possible.
-
-## 9. Config Save/Load
+## 8. Config Save/Load
 
 ```bash
 evoctl set volume -30
@@ -229,7 +213,7 @@ evoctl status
 
 **Expected:** After load, volume back to -30 dB, gain back to 25 dB.
 
-## 10. Test Suite
+## 9. Test Suite
 
 ```bash
 pytest tests/test_controller.py -v --device evo8
@@ -250,9 +234,9 @@ pytest tests/test_mixer_audio.py -v --device evo8
 pytest tests/test_mixer_mic.py -vs --device evo8
 ```
 
-## 11. Uninstall Verification
+## 10. Uninstall Verification
 
-### 11a. WirePlumber
+### 10a. WirePlumber
 
 ```bash
 bash wireplumber/uninstall.sh
@@ -261,7 +245,7 @@ wpctl status | grep -i evo
 
 **Expected:** EVO configs removed, PipeWire restarted.
 
-### 11b. Kernel module
+### 10b. Kernel module
 
 ```bash
 cd kmod
@@ -271,7 +255,7 @@ ls -la /dev/evo8
 
 **Expected:** Module removed, `/dev/evo8` gone.
 
-### 11c. evoctl
+### 10c. evoctl
 
 ```bash
 pipx uninstall audient-evo-py
