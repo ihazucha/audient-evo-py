@@ -1,15 +1,15 @@
-"""Audio loopback tests for EVO4 mixer — requires connected hardware.
+"""Audio loopback tests for EVO mixer - requires connected hardware.
 
 Tests the MU60 loopback mixer by playing known signals through DAW output,
 configuring mixer crosspoints, and capturing/analyzing the loopback return.
 
 Signal path under test:
-  Python → PipeWire → EVO4 DAW Out (CH1/2) → MU60 crosspoints → Loopback In (CH3/4) → PipeWire → Python
+  Python -> PipeWire -> EVO DAW Out (CH1/2) -> MU60 crosspoints -> Loopback In -> PipeWire -> Python
 
 Requirements:
-  - EVO4 connected and evo4_raw kmod loaded
-  - PipeWire running with EVO4 sinks/sources available
-  - No other audio playing through EVO4 during tests
+  - EVO device connected and evo_raw kmod loaded
+  - PipeWire running with EVO sinks/sources available
+  - No other audio playing through the device during tests
   - pip: sounddevice, numpy
 """
 
@@ -20,9 +20,8 @@ import pytest
 import sounddevice as sd
 
 from evo.controller import EVOController, _MIXER_DB_MIN
-from evo.devices import EVO4
 
-# ── Audio constants ──────────────────────────────────────────────────
+# -- Audio constants --
 
 SAMPLE_RATE = 48000
 TONE_HZ = 1000.0
@@ -30,11 +29,26 @@ DURATION = 1.0          # seconds of playback + capture
 TRIM = 0.25             # seconds trimmed from each end to skip latency transients
 
 # dBFS thresholds for signal detection
-PRESENT = -40.0         # above → signal present
-ABSENT = -60.0          # below → considered silent
+PRESENT = -40.0         # above -> signal present
+ABSENT = -60.0          # below -> considered silent
+
+# PipeWire node name prefixes by device
+# NOTE: EVO 8 names may need adjustment based on tester feedback
+_NODE_NAMES = {
+    "evo4": {
+        "daw_out": "EVO4 Main Output",
+        "loop_out": "EVO4 Loopback Output",
+        "loop_cap": "EVO4 Loopback",
+    },
+    "evo8": {
+        "daw_out": "EVO8 Main Output",
+        "loop_out": "EVO8 Loopback Output",
+        "loop_cap": "EVO8 Loopback",
+    },
+}
 
 
-# ── Helpers ──────────────────────────────────────────────────────────
+# -- Helpers --
 
 def _find_device(name, kind):
     """Find sounddevice index by exact device description and 'input'/'output'.
@@ -84,36 +98,41 @@ def levels(captured):
     return rms_dbfs(t[:, 0]), rms_dbfs(t[:, 1])
 
 
-# ── Fixtures ─────────────────────────────────────────────────────────
+# -- Fixtures --
 
 @pytest.fixture(scope="module")
-def evo():
-    return EVOController(EVO4)
-
-
-@pytest.fixture(scope="module")
-def daw_out():
-    """EVO4 Main Output sink — plays to DAW CH1/2."""
-    return _find_device("EVO4 Main Output", "output")
+def node_names(device_spec):
+    """PipeWire node names for the device under test."""
+    names = _NODE_NAMES.get(device_spec.name)
+    if names is None:
+        pytest.skip(f"No PipeWire node names configured for {device_spec.name}")
+    return names
 
 
 @pytest.fixture(scope="module")
-def loop_out():
-    """EVO4 Loopback Output sink — plays to Loopback Out CH3/4."""
-    return _find_device("EVO4 Loopback Output", "output")
+def daw_out(node_names):
+    """EVO Main Output sink - plays to DAW CH1/2."""
+    return _find_device(node_names["daw_out"], "output")
 
 
 @pytest.fixture(scope="module")
-def loop_cap():
-    """EVO4 Loopback capture source — records Loopback In CH3/4."""
-    return _find_device("EVO4 Loopback", "input")
+def loop_out(node_names):
+    """EVO Loopback Output sink - plays to Loopback Out."""
+    return _find_device(node_names["loop_out"], "output")
+
+
+@pytest.fixture(scope="module")
+def loop_cap(node_names):
+    """EVO Loopback capture source - records Loopback In."""
+    return _find_device(node_names["loop_cap"], "input")
 
 
 @pytest.fixture(autouse=True)
-def silence_all_crosspoints(evo):
+def silence_all_crosspoints(evo, device_spec):
     """Mute every crosspoint before and after each test."""
+    total = device_spec.mixer_inputs * device_spec.mixer_outputs
     def _silence():
-        for cn in range(12):
+        for cn in range(total):
             evo.set_mixer_crosspoint(cn, _MIXER_DB_MIN)
         time.sleep(0.05)
     _silence()
@@ -145,13 +164,18 @@ def playrec(signal, capture_dev, playback_dev):
     return captured
 
 
-# ── Tests: baseline ──────────────────────────────────────────────────
+def _daw_l_cn(device_spec, mix_bus=0):
+    """CN index for DAW L -> Loopback L on the given mix bus."""
+    return device_spec.num_inputs * device_spec.mixer_outputs + mix_bus * 2
+
+
+# -- Tests: baseline --
 
 class TestBaseline:
-    """All crosspoints silenced — loopback must be quiet."""
+    """All crosspoints silenced - loopback must be quiet."""
 
     def test_silence(self, daw_out, loop_cap):
-        """Playing audio with all crosspoints muted → loopback silent."""
+        """Playing audio with all crosspoints muted -> loopback silent."""
         sig = stereo(sine(), left=True, right=True)
         cap = playrec(sig, loop_cap, daw_out)
         l, r = levels(cap)
@@ -159,62 +183,70 @@ class TestBaseline:
         assert r < ABSENT, f"Right not silent: {r:.1f} dBFS"
 
 
-# ── Tests: individual crosspoint routing ─────────────────────────────
+# -- Tests: individual crosspoint routing --
 
 class TestDawCrosspoints:
-    """Verify each DAW→Loopback crosspoint routes to the correct channel."""
+    """Verify each DAW->Loopback crosspoint routes to the correct channel."""
 
-    def test_daw_l_to_loop_l(self, evo, daw_out, loop_cap):
-        """CN 4: DAW L → Loopback L only."""
-        evo.set_mixer_crosspoint(4, 0.0)
+    def test_daw_l_to_loop_l(self, evo, device_spec, daw_out, loop_cap):
+        """DAW L -> Loopback L only."""
+        cn = _daw_l_cn(device_spec)
+        evo.set_mixer_crosspoint(cn, 0.0)
         sig = stereo(sine(), left=True, right=False)
         cap = playrec(sig, loop_cap, daw_out)
         l, r = levels(cap)
         assert l > PRESENT, f"Left should have signal: {l:.1f} dBFS"
         assert r < ABSENT, f"Right should be silent: {r:.1f} dBFS"
 
-    def test_daw_l_to_loop_r(self, evo, daw_out, loop_cap):
-        """CN 5: DAW L → Loopback R only."""
-        evo.set_mixer_crosspoint(5, 0.0)
+    def test_daw_l_to_loop_r(self, evo, device_spec, daw_out, loop_cap):
+        """DAW L -> Loopback R only."""
+        cn = _daw_l_cn(device_spec) + 1
+        evo.set_mixer_crosspoint(cn, 0.0)
         sig = stereo(sine(), left=True, right=False)
         cap = playrec(sig, loop_cap, daw_out)
         l, r = levels(cap)
         assert l < ABSENT, f"Left should be silent: {l:.1f} dBFS"
         assert r > PRESENT, f"Right should have signal: {r:.1f} dBFS"
 
-    def test_daw_r_to_loop_l(self, evo, daw_out, loop_cap):
-        """CN 6: DAW R → Loopback L only."""
-        evo.set_mixer_crosspoint(6, 0.0)
+    def test_daw_r_to_loop_l(self, evo, device_spec, daw_out, loop_cap):
+        """DAW R -> Loopback L only."""
+        cn = _daw_l_cn(device_spec) + device_spec.mixer_outputs
+        evo.set_mixer_crosspoint(cn, 0.0)
         sig = stereo(sine(), left=False, right=True)
         cap = playrec(sig, loop_cap, daw_out)
         l, r = levels(cap)
         assert l > PRESENT, f"Left should have signal: {l:.1f} dBFS"
         assert r < ABSENT, f"Right should be silent: {r:.1f} dBFS"
 
-    def test_daw_r_to_loop_r(self, evo, daw_out, loop_cap):
-        """CN 7: DAW R → Loopback R only."""
-        evo.set_mixer_crosspoint(7, 0.0)
+    def test_daw_r_to_loop_r(self, evo, device_spec, daw_out, loop_cap):
+        """DAW R -> Loopback R only."""
+        cn = _daw_l_cn(device_spec) + device_spec.mixer_outputs + 1
+        evo.set_mixer_crosspoint(cn, 0.0)
         sig = stereo(sine(), left=False, right=True)
         cap = playrec(sig, loop_cap, daw_out)
         l, r = levels(cap)
         assert l < ABSENT, f"Left should be silent: {l:.1f} dBFS"
         assert r > PRESENT, f"Right should have signal: {r:.1f} dBFS"
 
-    def test_stereo_passthrough(self, evo, daw_out, loop_cap):
-        """CN 4+7: DAW stereo → Loopback stereo."""
-        evo.set_mixer_crosspoint(4, 0.0)   # DAW L → Loop L
-        evo.set_mixer_crosspoint(7, 0.0)   # DAW R → Loop R
+    def test_stereo_passthrough(self, evo, device_spec, daw_out, loop_cap):
+        """DAW stereo -> Loopback stereo."""
+        cn_ll = _daw_l_cn(device_spec)
+        cn_rr = _daw_l_cn(device_spec) + device_spec.mixer_outputs + 1
+        evo.set_mixer_crosspoint(cn_ll, 0.0)
+        evo.set_mixer_crosspoint(cn_rr, 0.0)
         sig = stereo(sine(), left=True, right=True)
         cap = playrec(sig, loop_cap, daw_out)
         l, r = levels(cap)
         assert l > PRESENT, f"Left should have signal: {l:.1f} dBFS"
         assert r > PRESENT, f"Right should have signal: {r:.1f} dBFS"
 
-    def test_cross_routing(self, evo, daw_out, loop_cap):
-        """CN 5+6: DAW L→Loop R, DAW R→Loop L (swap channels)."""
-        evo.set_mixer_crosspoint(5, 0.0)   # DAW L → Loop R
-        evo.set_mixer_crosspoint(6, 0.0)   # DAW R → Loop L
-        # Play left only — should appear on right only
+    def test_cross_routing(self, evo, device_spec, daw_out, loop_cap):
+        """DAW L->Loop R, DAW R->Loop L (swap channels)."""
+        cn_lr = _daw_l_cn(device_spec) + 1
+        cn_rl = _daw_l_cn(device_spec) + device_spec.mixer_outputs
+        evo.set_mixer_crosspoint(cn_lr, 0.0)
+        evo.set_mixer_crosspoint(cn_rl, 0.0)
+        # Play left only - should appear on right only
         sig = stereo(sine(), left=True, right=False)
         cap = playrec(sig, loop_cap, daw_out)
         l, r = levels(cap)
@@ -222,33 +254,39 @@ class TestDawCrosspoints:
         assert r > PRESENT, f"Right should have signal: {r:.1f} dBFS"
 
 
-# ── Tests: loopback output routing (CH3/4 → loopback capture) ───────
+# -- Tests: loopback output routing --
 
 class TestLoopbackCrosspoints:
-    """Verify Loopback Out → Loopback In crosspoint routing (CN 8-11)."""
+    """Verify Loopback Out -> Loopback In crosspoint routing."""
 
-    def test_loopout_l_to_loop_l(self, evo, loop_out, loop_cap):
-        """CN 8: Loopback Out L → Loopback In L."""
-        evo.set_mixer_crosspoint(8, 0.0)
+    def _loop_base(self, device_spec):
+        """First CN for loopback-out inputs."""
+        return (device_spec.num_inputs + device_spec.num_output_pairs * 2) * device_spec.mixer_outputs
+
+    def test_loopout_l_to_loop_l(self, evo, device_spec, loop_out, loop_cap):
+        cn = self._loop_base(device_spec)
+        evo.set_mixer_crosspoint(cn, 0.0)
         sig = stereo(sine(), left=True, right=False)
         cap = playrec(sig, loop_cap, loop_out)
         l, r = levels(cap)
         assert l > PRESENT, f"Left should have signal: {l:.1f} dBFS"
         assert r < ABSENT, f"Right should be silent: {r:.1f} dBFS"
 
-    def test_loopout_r_to_loop_r(self, evo, loop_out, loop_cap):
-        """CN 11: Loopback Out R → Loopback In R."""
-        evo.set_mixer_crosspoint(11, 0.0)
+    def test_loopout_r_to_loop_r(self, evo, device_spec, loop_out, loop_cap):
+        cn = self._loop_base(device_spec) + device_spec.mixer_outputs + 1
+        evo.set_mixer_crosspoint(cn, 0.0)
         sig = stereo(sine(), left=False, right=True)
         cap = playrec(sig, loop_cap, loop_out)
         l, r = levels(cap)
         assert l < ABSENT, f"Left should be silent: {l:.1f} dBFS"
         assert r > PRESENT, f"Right should have signal: {r:.1f} dBFS"
 
-    def test_loopout_stereo(self, evo, loop_out, loop_cap):
-        """CN 8+11: Loopback Out stereo → Loopback In stereo."""
-        evo.set_mixer_crosspoint(8, 0.0)
-        evo.set_mixer_crosspoint(11, 0.0)
+    def test_loopout_stereo(self, evo, device_spec, loop_out, loop_cap):
+        base = self._loop_base(device_spec)
+        cn_ll = base
+        cn_rr = base + device_spec.mixer_outputs + 1
+        evo.set_mixer_crosspoint(cn_ll, 0.0)
+        evo.set_mixer_crosspoint(cn_rr, 0.0)
         sig = stereo(sine(), left=True, right=True)
         cap = playrec(sig, loop_cap, loop_out)
         l, r = levels(cap)
@@ -256,7 +294,7 @@ class TestLoopbackCrosspoints:
         assert r > PRESENT, f"Right should have signal: {r:.1f} dBFS"
 
 
-# ── Tests: convenience methods ───────────────────────────────────────
+# -- Tests: convenience methods --
 
 class TestMixerOutput:
     """Test set_mixer_output() high-level routing."""
@@ -271,7 +309,7 @@ class TestMixerOutput:
         assert r > PRESENT, f"Right: {r:.1f} dBFS"
 
     def test_left_only_playback(self, evo, daw_out, loop_cap):
-        """With default stereo routing, left-only playback → left-only loopback."""
+        """With default stereo routing, left-only playback -> left-only loopback."""
         evo.set_mixer_output(0.0)
         sig = stereo(sine(), left=True, right=False)
         cap = playrec(sig, loop_cap, daw_out)
@@ -280,7 +318,7 @@ class TestMixerOutput:
         assert r < ABSENT, f"Right should be silent: {r:.1f} dBFS"
 
     def test_right_only_playback(self, evo, daw_out, loop_cap):
-        """With default stereo routing, right-only playback → right-only loopback."""
+        """With default stereo routing, right-only playback -> right-only loopback."""
         evo.set_mixer_output(0.0)
         sig = stereo(sine(), left=False, right=True)
         cap = playrec(sig, loop_cap, daw_out)
@@ -312,7 +350,7 @@ class TestMixerLoopback:
         assert r > PRESENT, f"Right: {r:.1f} dBFS"
 
     def test_left_only(self, evo, loop_out, loop_cap):
-        """Left-only loopback out → left-only loopback capture."""
+        """Left-only loopback out -> left-only loopback capture."""
         evo.set_mixer_loopback(0.0)
         sig = stereo(sine(), left=True, right=False)
         cap = playrec(sig, loop_cap, loop_out)
@@ -321,60 +359,65 @@ class TestMixerLoopback:
         assert r < ABSENT, f"Right should be silent: {r:.1f} dBFS"
 
 
-# ── Tests: gain / volume behavior ────────────────────────────────────
+# -- Tests: gain / volume behavior --
 
 class TestMixerGain:
     """Verify crosspoint gain affects captured level correctly."""
 
-    def _measure_at_gain(self, evo, daw_out, loop_cap, gain_db):
-        """Set CN4 to gain_db, play left sine, return left channel dBFS."""
-        evo.set_mixer_crosspoint(4, gain_db)
+    def _measure_at_gain(self, evo, device_spec, daw_out, loop_cap, gain_db):
+        """Set DAW L->Loop L to gain_db, play left sine, return left channel dBFS."""
+        cn = _daw_l_cn(device_spec)
+        evo.set_mixer_crosspoint(cn, gain_db)
         time.sleep(0.05)
         sig = stereo(sine(), left=True, right=False)
         cap = playrec(sig, loop_cap, daw_out)
         return rms_dbfs(trim(cap)[:, 0])
 
-    def test_gain_ordering(self, evo, daw_out, loop_cap):
-        """Higher crosspoint gain → louder capture."""
-        lev_0 = self._measure_at_gain(evo, daw_out, loop_cap, 0.0)
-        lev_12 = self._measure_at_gain(evo, daw_out, loop_cap, -12.0)
-        lev_24 = self._measure_at_gain(evo, daw_out, loop_cap, -24.0)
+    def test_gain_ordering(self, evo, device_spec, daw_out, loop_cap):
+        """Higher crosspoint gain -> louder capture."""
+        lev_0 = self._measure_at_gain(evo, device_spec, daw_out, loop_cap, 0.0)
+        lev_12 = self._measure_at_gain(evo, device_spec, daw_out, loop_cap, -12.0)
+        lev_24 = self._measure_at_gain(evo, device_spec, daw_out, loop_cap, -24.0)
         assert lev_0 > lev_12 > lev_24, \
             f"Levels should decrease: 0dB={lev_0:.1f}, -12dB={lev_12:.1f}, -24dB={lev_24:.1f}"
 
-    def test_6db_step(self, evo, daw_out, loop_cap):
+    def test_6db_step(self, evo, device_spec, daw_out, loop_cap):
         """0 dB vs -6 dB crosspoint should differ by ~6 dB in capture."""
-        lev_0 = self._measure_at_gain(evo, daw_out, loop_cap, 0.0)
-        lev_6 = self._measure_at_gain(evo, daw_out, loop_cap, -6.0)
+        lev_0 = self._measure_at_gain(evo, device_spec, daw_out, loop_cap, 0.0)
+        lev_6 = self._measure_at_gain(evo, device_spec, daw_out, loop_cap, -6.0)
         diff = lev_0 - lev_6
         assert 3.0 < diff < 9.0, \
             f"Expected ~6 dB difference, got {diff:.1f} (0dB={lev_0:.1f}, -6dB={lev_6:.1f})"
 
-    def test_silence_at_min_gain(self, evo, daw_out, loop_cap):
+    def test_silence_at_min_gain(self, evo, device_spec, daw_out, loop_cap):
         """Crosspoint at -128 dB should produce silence."""
-        lev = self._measure_at_gain(evo, daw_out, loop_cap, _MIXER_DB_MIN)
+        lev = self._measure_at_gain(evo, device_spec, daw_out, loop_cap, _MIXER_DB_MIN)
         assert lev < ABSENT, f"Should be silent at min gain: {lev:.1f} dBFS"
 
 
-# ── Tests: summation (multiple crosspoints active) ───────────────────
+# -- Tests: summation (multiple crosspoints active) --
 
 class TestMixerSummation:
     """Verify that multiple active crosspoints sum into the loopback bus."""
 
-    def test_both_daw_channels_sum_to_mono(self, evo, daw_out, loop_cap):
-        """DAW L + DAW R both routed to Loopback L — level should be higher than one alone."""
+    def test_both_daw_channels_sum_to_mono(self, evo, device_spec, daw_out, loop_cap):
+        """DAW L + DAW R both routed to Loopback L - level should be higher than one alone."""
+        total = device_spec.mixer_inputs * device_spec.mixer_outputs
         sig = stereo(sine(), left=True, right=True)
 
+        cn_ll = _daw_l_cn(device_spec)
+        cn_rl = _daw_l_cn(device_spec) + device_spec.mixer_outputs
+
         # Single source
-        evo.set_mixer_crosspoint(4, 0.0)   # DAW L → Loop L
+        evo.set_mixer_crosspoint(cn_ll, 0.0)
         cap_single = playrec(sig, loop_cap, daw_out)
         lev_single = rms_dbfs(trim(cap_single)[:, 0])
 
         # Both sources
-        for cn in range(12):
+        for cn in range(total):
             evo.set_mixer_crosspoint(cn, _MIXER_DB_MIN)
-        evo.set_mixer_crosspoint(4, 0.0)   # DAW L → Loop L
-        evo.set_mixer_crosspoint(6, 0.0)   # DAW R → Loop L
+        evo.set_mixer_crosspoint(cn_ll, 0.0)   # DAW L -> Loop L
+        evo.set_mixer_crosspoint(cn_rl, 0.0)   # DAW R -> Loop L
         cap_both = playrec(sig, loop_cap, daw_out)
         lev_both = rms_dbfs(trim(cap_both)[:, 0])
 

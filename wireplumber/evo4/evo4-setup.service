@@ -4,7 +4,7 @@ After=pipewire.service wireplumber.service
 
 [Service]
 Type=oneshot
-ExecStart=/home/insert/.local/bin/evo4-setup.sh
+ExecStart=%h/.local/bin/evo4-setup.sh
 RemainAfterExit=yes
 
 [Install]

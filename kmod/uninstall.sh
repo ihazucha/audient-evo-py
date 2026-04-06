@@ -43,10 +43,10 @@ for src in "$SRC_DIR" "/usr/src/evo4_raw-${MODULE_VERSION}"; do
 done
 
 # Remove udev rules
-for rules in 99-evo4.rules 99-evo8.rules; do
-  if [[ -f "/etc/udev/rules.d/${rules}" ]]; then
-    echo "Removing udev rule ${rules}..."
-    rm "/etc/udev/rules.d/${rules}"
+for rules in /etc/udev/rules.d/99-evo*.rules; do
+  if [[ -f "$rules" ]]; then
+    echo "Removing udev rule $(basename "$rules")..."
+    rm "$rules"
   fi
 done
 udevadm control --reload-rules 2>/dev/null || true
@@ -56,10 +56,11 @@ if [[ -n "${SUDO_USER:-}" ]]; then
   TARGET_USER="$SUDO_USER"
   TARGET_HOME=$(eval echo ~"$TARGET_USER")
 
-  for service in evo4-load-config.service evo8-load-config.service; do
-    SYSTEMD_SERVICE="$TARGET_HOME/.config/systemd/user/${service}"
+  for SYSTEMD_SERVICE in "$TARGET_HOME"/.config/systemd/user/evo*-load-config.service; do
     if [[ -f "$SYSTEMD_SERVICE" ]]; then
-      echo "Removing systemd service ${service} for user '$TARGET_USER'..."
+      service=$(basename "$SYSTEMD_SERVICE")
+      echo "Disabling and removing systemd service ${service} for user '$TARGET_USER'..."
+      sudo -u "$TARGET_USER" systemctl --user disable "$service" 2>/dev/null || true
       rm "$SYSTEMD_SERVICE"
     fi
   done

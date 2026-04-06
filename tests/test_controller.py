@@ -1,18 +1,13 @@
-"""Integration tests for EVO4 controller - requires a connected Audient EVO4.
+"""Integration tests for EVO controller - requires a connected Audient EVO device.
 
 Each test saves the current value, sets a new value, verifies it, then restores.
+Device-agnostic: use --device evo4|evo8|auto to select the target.
 """
 
 import time
 import pytest
 
 from evo.controller import EVOController, _db_to_usb, _usb_to_db, _MIXER_DB_MIN
-from evo.devices import EVO4
-
-
-@pytest.fixture(scope="module")
-def evo():
-    return EVOController(EVO4)
 
 
 SETTLE_TIME = 0.05  # seconds to wait after SET before GET
@@ -29,7 +24,7 @@ class TestDbConversions:
         assert _db_to_usb(-1.0) == 0xFF00
 
     def test_db_to_usb_min(self):
-        # -127 dB → should not overflow 16-bit
+        # -127 dB - should not overflow 16-bit
         raw = _db_to_usb(-127.0)
         assert 0 <= raw <= 0xFFFF
 
@@ -40,7 +35,7 @@ class TestDbConversions:
         assert _usb_to_db(0xFF00) == -1.0
 
     def test_usb_to_db_large_negative(self):
-        # 0x8080 → signed = -32640 → -127.5 dB
+        # 0x8080 - signed = -32640 - -127.5 dB
         assert _usb_to_db(0x8080) == pytest.approx(-127.5)
 
     def test_roundtrip(self):
@@ -92,12 +87,30 @@ class TestVolume:
         assert isinstance(db, float)
         assert -96.0 <= db <= 0.0
 
+    def test_output_pair_2(self, evo, device_spec):
+        """Test volume on second output pair (EVO 8 only)."""
+        if device_spec.num_output_pairs < 2:
+            pytest.skip("Single output pair device")
+        original = evo.get_volume(output_pair=1)
+        target = -25.0 if abs(original - (-25.0)) > 1.0 else -35.0
+        try:
+            evo.set_volume(target, output_pair=1)
+            time.sleep(SETTLE_TIME)
+            result = evo.get_volume(output_pair=1)
+            assert abs(result - target) <= 0.5, \
+                f"Volume pair 2: expected ~{target} dB, got {result} dB"
+        finally:
+            evo.set_volume(original, output_pair=1)
+
 
 class TestGain:
-    @pytest.mark.parametrize("target", ["input1", "input2"])
+    @pytest.mark.parametrize("target", ["input1", "input2", "input3", "input4"])
     def test_set_and_get(self, evo, target):
+        if target not in evo._gain_targets:
+            pytest.skip(f"{target} not available on {evo.spec.display_name}")
         original = evo.get_gain(target)
-        goal = 21.0 if abs(original - 21.0) > 1.0 else 10.0
+        mid = (evo.spec.gain_db_min + evo.spec.gain_db_max) / 2
+        goal = mid if abs(original - mid) > 1.0 else mid + 5.0
 
         try:
             evo.set_gain(target, goal)
@@ -108,26 +121,30 @@ class TestGain:
         finally:
             evo.set_gain(target, original)
 
-    def test_per_input_independence(self, evo):
-        orig1 = evo.get_gain("input1")
-        orig2 = evo.get_gain("input2")
+    def test_per_input_independence(self, evo, device_spec):
+        inputs = [f"input{i+1}" for i in range(min(2, device_spec.num_inputs))]
+        lo = device_spec.gain_db_min + 3.0
+        hi = device_spec.gain_db_max - 20.0
+        originals = {t: evo.get_gain(t) for t in inputs}
         try:
-            evo.set_gain("input1", -5.0)
-            evo.set_gain("input2", 30.0)
+            evo.set_gain(inputs[0], lo)
+            evo.set_gain(inputs[1], hi)
             time.sleep(SETTLE_TIME)
-            r1 = evo.get_gain("input1")
-            r2 = evo.get_gain("input2")
-            assert abs(r1 - (-5.0)) <= 0.5, f"input1: expected ~-5 dB, got {r1}"
-            assert abs(r2 - 30.0) <= 0.5, f"input2: expected ~30 dB, got {r2}"
+            r0 = evo.get_gain(inputs[0])
+            r1 = evo.get_gain(inputs[1])
+            assert abs(r0 - lo) <= 0.5, f"{inputs[0]}: expected ~{lo} dB, got {r0}"
+            assert abs(r1 - hi) <= 0.5, f"{inputs[1]}: expected ~{hi} dB, got {r1}"
         finally:
-            evo.set_gain("input1", orig1)
-            evo.set_gain("input2", orig2)
+            for t, val in originals.items():
+                evo.set_gain(t, val)
 
-    @pytest.mark.parametrize("target", ["input1", "input2"])
-    def test_gain_boundaries(self, evo, target):
+    @pytest.mark.parametrize("target", ["input1", "input2", "input3", "input4"])
+    def test_gain_boundaries(self, evo, device_spec, target):
+        if target not in evo._gain_targets:
+            pytest.skip(f"{target} not available on {evo.spec.display_name}")
         original = evo.get_gain(target)
         try:
-            for goal in (-8.0, 50.0):
+            for goal in (device_spec.gain_db_min, device_spec.gain_db_max):
                 evo.set_gain(target, goal)
                 time.sleep(SETTLE_TIME)
                 result = evo.get_gain(target)
@@ -136,27 +153,34 @@ class TestGain:
         finally:
             evo.set_gain(target, original)
 
-    def test_set_returns_raw_and_db(self, evo):
+    def test_set_returns_raw_and_db(self, evo, device_spec):
         original = evo.get_gain("input1")
         try:
-            _, db = evo.set_gain("input1", -8.0)
-            assert db == pytest.approx(-8.0)
-            _, db = evo.set_gain("input1", 50.0)
-            assert db == pytest.approx(50.0)
+            _, db = evo.set_gain("input1", device_spec.gain_db_min)
+            assert db == pytest.approx(device_spec.gain_db_min)
+            _, db = evo.set_gain("input1", device_spec.gain_db_max)
+            assert db == pytest.approx(device_spec.gain_db_max)
         finally:
             evo.set_gain("input1", original)
 
-    @pytest.mark.parametrize("target", ["input1", "input2"])
-    def test_debug_format(self, evo, target):
+    @pytest.mark.parametrize("target", ["input1", "input2", "input3", "input4"])
+    def test_debug_format(self, evo, device_spec, target):
+        if target not in evo._gain_targets:
+            pytest.skip(f"{target} not available on {evo.spec.display_name}")
         raw, db = evo.get_gain_debug(target)
         assert isinstance(raw, int)
         assert isinstance(db, float)
-        assert -8.0 <= db <= 50.0
+        assert device_spec.gain_db_min <= db <= device_spec.gain_db_max
 
 
 class TestMute:
-    @pytest.mark.parametrize("target", ["input1", "input2", "output"])
+    @pytest.mark.parametrize("target", [
+        "input1", "input2", "input3", "input4",
+        "output", "output1", "output2",
+    ])
     def test_toggle_mute(self, evo, target):
+        if target not in evo._mute_targets:
+            pytest.skip(f"{target} not available on {evo.spec.display_name}")
         original = evo.get_mute(target)
         new_state = not original
 
@@ -169,9 +193,14 @@ class TestMute:
         finally:
             evo.set_mute(target, original)
 
-    @pytest.mark.parametrize("target", ["input1", "input2", "output"])
+    @pytest.mark.parametrize("target", [
+        "input1", "input2", "input3", "input4",
+        "output", "output1", "output2",
+    ])
     def test_mute_on_off(self, evo, target):
         """Explicitly test both on and off states."""
+        if target not in evo._mute_targets:
+            pytest.skip(f"{target} not available on {evo.spec.display_name}")
         original = evo.get_mute(target)
         try:
             evo.set_mute(target, True)
@@ -186,20 +215,20 @@ class TestMute:
 
     def test_mute_targets_independent(self, evo):
         """Muting one target should not affect others."""
-        originals = {t: evo.get_mute(t) for t in ["input1", "input2", "output"]}
+        targets = list(evo._mute_targets.keys())
+        originals = {t: evo.get_mute(t) for t in targets}
         try:
-            # Unmute all first
-            for t in originals:
+            for t in targets:
                 evo.set_mute(t, False)
             time.sleep(SETTLE_TIME)
 
-            # Mute only input1
-            evo.set_mute("input1", True)
+            # Mute only the first target
+            evo.set_mute(targets[0], True)
             time.sleep(SETTLE_TIME)
 
-            assert evo.get_mute("input1") is True
-            assert evo.get_mute("input2") is False
-            assert evo.get_mute("output") is False
+            assert evo.get_mute(targets[0]) is True
+            for t in targets[1:]:
+                assert evo.get_mute(t) is False, f"{t} should still be unmuted"
         finally:
             for t, val in originals.items():
                 evo.set_mute(t, val)
@@ -212,8 +241,10 @@ class TestMute:
 
 
 class TestPhantom:
-    @pytest.mark.parametrize("target", ["input1", "input2"])
+    @pytest.mark.parametrize("target", ["input1", "input2", "input3", "input4"])
     def test_toggle_phantom(self, evo, target):
+        if target not in evo._phantom_targets:
+            pytest.skip(f"{target} not available on {evo.spec.display_name}")
         original = evo.get_phantom(target)
         new_state = not original
 
@@ -226,9 +257,11 @@ class TestPhantom:
         finally:
             evo.set_phantom(target, original)
 
-    @pytest.mark.parametrize("target", ["input1", "input2"])
+    @pytest.mark.parametrize("target", ["input1", "input2", "input3", "input4"])
     def test_phantom_on_off(self, evo, target):
         """Explicitly test both on and off states."""
+        if target not in evo._phantom_targets:
+            pytest.skip(f"{target} not available on {evo.spec.display_name}")
         original = evo.get_phantom(target)
         try:
             evo.set_phantom(target, True)
@@ -241,19 +274,20 @@ class TestPhantom:
         finally:
             evo.set_phantom(target, original)
 
-    def test_phantom_targets_independent(self, evo):
+    def test_phantom_targets_independent(self, evo, device_spec):
         """Setting phantom on one input should not affect the other."""
-        originals = {t: evo.get_phantom(t) for t in ["input1", "input2"]}
+        inputs = [f"input{i+1}" for i in range(min(2, device_spec.num_inputs))]
+        originals = {t: evo.get_phantom(t) for t in inputs}
         try:
-            evo.set_phantom("input1", False)
-            evo.set_phantom("input2", False)
+            for t in inputs:
+                evo.set_phantom(t, False)
             time.sleep(SETTLE_TIME)
 
-            evo.set_phantom("input1", True)
+            evo.set_phantom(inputs[0], True)
             time.sleep(SETTLE_TIME)
 
-            assert evo.get_phantom("input1") is True
-            assert evo.get_phantom("input2") is False
+            assert evo.get_phantom(inputs[0]) is True
+            assert evo.get_phantom(inputs[1]) is False
         finally:
             for t, val in originals.items():
                 evo.set_phantom(t, val)
@@ -266,6 +300,11 @@ class TestPhantom:
 
 
 class TestMonitor:
+    @pytest.fixture(autouse=True)
+    def _require_monitor(self, device_spec):
+        if not device_spec.has_monitor:
+            pytest.skip(f"{device_spec.display_name} does not have direct monitor control")
+
     def test_set_and_get(self, evo):
         original = evo.get_monitor()
         target = 65 if original != 65 else 66
@@ -305,6 +344,23 @@ class TestMonitor:
         result = evo.get_monitor()
         assert isinstance(result, int)
         assert 0 <= result <= 100
+
+
+class TestMonitorUnavailable:
+    """Verify monitor raises on devices without it."""
+
+    @pytest.fixture(autouse=True)
+    def _require_no_monitor(self, device_spec):
+        if device_spec.has_monitor:
+            pytest.skip("Device has monitor control - testing absence only")
+
+    def test_get_monitor_raises(self, evo):
+        with pytest.raises(RuntimeError):
+            evo.get_monitor()
+
+    def test_set_monitor_raises(self, evo):
+        with pytest.raises(RuntimeError):
+            evo.set_monitor(50)
 
 
 # --- Pan law unit tests (no hardware) ---
@@ -361,7 +417,7 @@ class TestPanLaw:
 
 class TestMixer:
     def test_set_crosspoint(self, evo):
-        """Set CN=0 to 0 dB — should not error."""
+        """Set CN=0 to 0 dB - should not error."""
         evo.set_mixer_crosspoint(0, 0.0)
 
     def test_get_crosspoint_stall(self, evo):
@@ -374,15 +430,15 @@ class TestMixer:
             pass  # expected STALL
 
     def test_set_mixer_input(self, evo):
-        """Set input1 to 0 dB center — should not error."""
+        """Set input1 to 0 dB center - should not error."""
         evo.set_mixer_input(1, 0.0, 0.0)
 
     def test_set_mixer_output(self, evo):
-        """Set output to 0 dB with default pans — should not error."""
+        """Set output to 0 dB with default pans - should not error."""
         evo.set_mixer_output(0.0)
 
     def test_set_mixer_loopback(self, evo):
-        """Set loopback to -6 dB with default pans — should not error."""
+        """Set loopback to -6 dB with default pans - should not error."""
         evo.set_mixer_loopback(-6.0)
 
     def test_crosspoint_invalid_cn(self, evo):
@@ -394,3 +450,11 @@ class TestMixer:
     def test_input_invalid_num(self, evo):
         with pytest.raises(ValueError):
             evo.set_mixer_input(evo.spec.num_inputs + 1, 0.0)
+
+    def test_mix_bus(self, evo, device_spec):
+        """Test mixer operations on second mix bus (multi-output devices)."""
+        if device_spec.num_output_pairs < 2:
+            pytest.skip("Single output pair device")
+        evo.set_mixer_input(1, 0.0, 0.0, mix_bus=1)
+        evo.set_mixer_output(0.0, mix_bus=1)
+        evo.set_mixer_loopback(-6.0, mix_bus=1)

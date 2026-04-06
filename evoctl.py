@@ -42,17 +42,11 @@ def parse_args(spec):
     get_p = sparser.add_parser("get", aliases=["g"], help="Get device param.")
     get_p.add_argument("parameter", choices=parameters)
     get_p.add_argument("--target", "-t", choices=mute_targets, default=None)
-    if spec.num_output_pairs > 1:
-        get_p.add_argument("--output", "-o", type=int, default=None,
-                           help="Output pair (1-based). Default: 1.")
 
     set_p = sparser.add_parser("set", aliases=["s"], help="Set device param.")
     set_p.add_argument("parameter", choices=parameters)
     set_p.add_argument("value", type=str)
     set_p.add_argument("--target", "-t", choices=mute_targets, default=None)
-    if spec.num_output_pairs > 1:
-        set_p.add_argument("--output", "-o", type=int, default=None,
-                           help="Output pair (1-based). Default: all.")
 
     status_p = sparser.add_parser("status", help="Show all device params.")
     status_p.add_argument("--format", "-f", choices=["plain", "json"], default="plain")
@@ -171,10 +165,13 @@ def _get_output_pair(args, spec) -> int | None:
     """Extract output_pair from args if applicable. Returns 0-based index or None."""
     if spec.num_output_pairs == 1:
         return None
-    raw = getattr(args, "output", None)
-    if raw is None:
+    target = getattr(args, "target", None)
+    if not target or not target.startswith("output"):
         return None
-    return raw - 1
+    try:
+        return int(target[len("output"):]) - 1
+    except (ValueError, IndexError):
+        return None
 
 
 def _run(args, evo: EVOController):
@@ -295,6 +292,13 @@ _USB_ERRORS = {
 }
 
 def main():
+    # Handle 'diag' before device resolution (works without any device)
+    if len(sys.argv) > 1 and sys.argv[1] == "diag":
+        import json
+        from evo.diag import collect_diagnostics
+        print(json.dumps(collect_diagnostics(), indent=2))
+        return
+
     # Pre-parse --device before building full parser (need spec for choices)
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--device", "-d", choices=list(DEVICES.keys()), default=None)

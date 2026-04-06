@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<presets>
+  <preset company="audient ltd" product="evo 8" schema-version="0.1.0"
+          software-version="4.2.3">
+    <device>
+      <mixer artistMixEnabled="0">
+        <input channel="0" mode="0" name="MIC 1" cut="0">
+          <mix index="0" volume="-128.00" pan="0.50"/>
+          <mix index="1" volume="-128.00" pan="0.50"/>
+        </input>
+        <input channel="1" mode="0" name="MIC 2" cut="0">
+          <mix index="0" volume="-128.00" pan="0.50"/>
+          <mix index="1" volume="-128.00" pan="0.50"/>
+        </input>
+        <input channel="2" mode="0" name="MIC 3" cut="0">
+          <mix index="0" volume="-128.00" pan="0.50"/>
+          <mix index="1" volume="-128.00" pan="0.50"/>
+        </input>
+        <input channel="3" mode="0" name="MIC 4" cut="0">
+          <mix index="0" volume="-128.00" pan="0.50"/>
+          <mix index="1" volume="-128.00" pan="0.50"/>
+        </input>
+        <input channel="4" mode="1" name="PC 1+2" cut="0">
+          <mix index="0" volume="0.00" pan="0.00"/>
+          <mix index="1" volume="0.00" pan="0.00"/>
+        </input>
+        <input channel="5" mode="2" name="PC 2" cut="0">
+          <mix index="0" volume="0.00" pan="1.00"/>
+          <mix index="1" volume="0.00" pan="1.00"/>
+        </input>
+        <input channel="6" mode="1" name="PC 3+4" cut="0">
+          <mix index="0" volume="-128.00" pan="0.00"/>
+          <mix index="1" volume="-128.00" pan="0.00"/>
+        </input>
+        <input channel="7" mode="2" name="PC 4" cut="0">
+          <mix index="0" volume="-128.00" pan="1.00"/>
+          <mix index="1" volume="-128.00" pan="1.00"/>
+        </input>
+        <input channel="8" mode="1" name="LOOP-BACK 1+2" cut="0">
+          <mix index="0" volume="-128.00" pan="0.00"/>
+          <mix index="1" volume="-128.00" pan="0.00"/>
+        </input>
+        <input channel="9" mode="2" name="LOOP-BACK 2" cut="0">
+          <mix index="0" volume="-128.00" pan="1.00"/>
+          <mix index="1" volume="-128.00" pan="1.00"/>
+        </input>
+        <output channel="0" volume="0.00" name="OUTPUTS 1+2"/>
+        <output channel="1" volume="0.00" name="OUTPUTS 1+2"/>
+        <output channel="2" volume="-128.00" name="OUTPUTS 3+4"/>
+        <output channel="3" volume="-128.00" name="OUTPUTS 3+4"/>
+      </mixer>
+      <system/>
+      <inputs>
+        <input index="0" phantom="0" gain="-2048" mute="0" link="0"/>
+        <input index="1" phantom="0" gain="-2048" mute="0" link="0"/>
+        <input index="2" phantom="0" gain="-2048" mute="0" link="0"/>
+        <input index="3" phantom="0" gain="-2048" mute="0" link="0"/>
+      </inputs>
+      <routing>
+        <loop-back type="0" index="4"/>
+      </routing>
+    </device>
+    <gui gui-type="evo" show-product-reg="0"/>
+  </preset>
+</presets>

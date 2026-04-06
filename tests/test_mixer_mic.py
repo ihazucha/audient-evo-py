@@ -1,19 +1,19 @@
-"""Interactive mic input → loopback mixer tests — requires a connected microphone.
+"""Interactive mic input -> loopback mixer tests - requires a connected microphone.
 
-Tests the MU60 input crosspoints (CN 0-3) by asking the user to make sound
+Tests the MU60 input crosspoints by asking the user to make sound
 into a physical mic, then verifying the signal appears on the correct
 loopback channel(s) based on pan setting.
 
 Signal path under test:
-  Microphone → EVO4 Input 1/2 → MU60 crosspoints (CN 0-3) → Loopback In (CH3/4) → PipeWire → Python
+  Microphone -> EVO Input -> MU60 crosspoints -> Loopback In -> PipeWire -> Python
 
 Run with:  pytest tests/test_mixer_mic.py -s
 The -s flag is required so interactive prompts are visible.
 
 Requirements:
-  - EVO4 connected and evo4_raw kmod loaded
-  - PipeWire running with EVO4 sinks/sources available
-  - A microphone connected to Input 1 or Input 2
+  - EVO device connected and evo_raw kmod loaded
+  - PipeWire running with EVO sinks/sources available
+  - A microphone connected to one of the inputs
   - pip: sounddevice, numpy
 """
 
@@ -23,16 +23,22 @@ import numpy as np
 import pytest
 import sounddevice as sd
 
-from evo.controller import EVOController, _MIXER_DB_MIN
-from evo.devices import EVO4
+from evo.controller import _MIXER_DB_MIN
 
 SAMPLE_RATE = 48000
 CAPTURE_DURATION = 3.0      # seconds to capture while user makes noise
 SETTLE = 0.1                # seconds after mixer changes before capture
 
-# dBFS thresholds (looser than automated tests — analog path adds loss/noise)
+# dBFS thresholds (looser than automated tests - analog path adds loss/noise)
 PRESENT = -50.0
 ABSENT = -60.0
+
+# PipeWire node names by device
+# NOTE: EVO 8 names may need adjustment based on tester feedback
+_LOOP_CAP_NAMES = {
+    "evo4": "EVO4 Loopback",
+    "evo8": "EVO8 Loopback",
+}
 
 
 def _find_device(name, kind):
@@ -76,7 +82,7 @@ def prompt_and_capture(pan_desc, loop_cap):
     """Prompt user to make noise, capture loopback, return levels."""
     input(f"\n  Ready to test pan={pan_desc}."
           f" Make continuous sound into the mic, then press Enter...")
-    print(f"  Capturing {CAPTURE_DURATION:.0f}s — keep making sound...")
+    print(f"  Capturing {CAPTURE_DURATION:.0f}s - keep making sound...")
     cap = capture_loopback(loop_cap)
     l, r = levels(cap)
     print(f"  Captured levels: L={l:.1f} dBFS, R={r:.1f} dBFS")
@@ -84,31 +90,32 @@ def prompt_and_capture(pan_desc, loop_cap):
 
 
 @pytest.fixture(scope="module")
-def evo():
-    return EVOController(EVO4)
+def loop_cap(device_spec):
+    name = _LOOP_CAP_NAMES.get(device_spec.name)
+    if name is None:
+        pytest.skip(f"No loopback capture name configured for {device_spec.name}")
+    return _find_device(name, "input")
 
 
 @pytest.fixture(scope="module")
-def loop_cap():
-    return _find_device("EVO4 Loopback", "input")
-
-
-@pytest.fixture(scope="module")
-def input_num():
+def input_num(device_spec):
     """Ask the user which input has a mic connected."""
     print()
+    options = [str(i + 1) for i in range(device_spec.num_inputs)]
+    prompt = f"Which input has a mic connected? [{'/'.join(options)}]: "
     while True:
-        ans = input("Which input has a mic connected? [1/2]: ").strip()
-        if ans in ("1", "2"):
+        ans = input(prompt).strip()
+        if ans in options:
             return int(ans)
-        print("Please enter 1 or 2.")
+        print(f"Please enter one of: {', '.join(options)}")
 
 
 @pytest.fixture(autouse=True)
-def silence_all_crosspoints(evo):
+def silence_all_crosspoints(evo, device_spec):
     """Silence all crosspoints before and after each test."""
+    total = device_spec.mixer_inputs * device_spec.mixer_outputs
     def _silence():
-        for cn in range(12):
+        for cn in range(total):
             evo.set_mixer_crosspoint(cn, _MIXER_DB_MIN)
         time.sleep(0.05)
     _silence()
