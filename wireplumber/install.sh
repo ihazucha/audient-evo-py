@@ -114,10 +114,10 @@ sleep 3
 info "Setting $DEV_UPPER as default audio device"
 
 get_node_id() {
-    wpctl status 2>/dev/null | grep -m1 "$1" | grep -oP '\d+(?=\.)' | head -1
+    wpctl status 2>/dev/null | grep -m1 "$1" | grep -oP '\d+(?=\.)' | head -1 || true
 }
 
-SINK_ID=$(get_node_id "alsa_output.usb-Audient_${DEV_UPPER}-00")
+SINK_ID=$(get_node_id "${dev}_main_output")
 
 if [[ -n "${SINK_ID:-}" ]]; then
     wpctl set-default "$SINK_ID"
