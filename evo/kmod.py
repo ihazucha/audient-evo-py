@@ -1,4 +1,4 @@
-"""Python wrapper for /dev/evo* ioctl - raw USB control transfers via kernel module."""
+"""Wrapper for /dev/evo* ioctl - raw USB control transfers via kernel module."""
 
 import fcntl
 import struct
@@ -51,7 +51,6 @@ def ctrl_transfer(
     fcntl.ioctl(fd, EVO_CTRL_TRANSFER, buf)
 
     if bRequestType & 0x80:
-        # Unpack response - kernel updated wLength to actual bytes received
         _, _, _, _, resp_len, resp_data = struct.unpack(_XFER_FMT, buf)
         return bytes(resp_data[:resp_len])
     return None
@@ -63,12 +62,13 @@ def open_device(dev_path: str) -> BinaryIO:
 
 
 def get_cur(fd: BinaryIO, wValue: int, wIndex: int, length: int) -> bytes:
-    """GET_CUR request - read current value from a USB Audio unit."""
+    """GET_CUR request - read value"""
     result = ctrl_transfer(fd, REQTYPE_GET, REQ_CUR, wValue, wIndex, length=length)
-    assert result is not None
+    if result is None:
+        raise RuntimeError("GET_CUR transfer returned no data")
     return result
 
 
 def set_cur(fd: BinaryIO, wValue: int, wIndex: int, data: bytes) -> None:
-    """SET_CUR request - write a value to a USB Audio unit."""
+    """SET_CUR request - write value"""
     ctrl_transfer(fd, REQTYPE_SET, REQ_CUR, wValue, wIndex, data=data)
