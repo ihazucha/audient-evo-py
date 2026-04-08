@@ -2,9 +2,9 @@
 
 Audient EVO (4/8) Linux controller.
 
-Audient software is Win/macOS only. CLI `evoctl` and TUI `evotui` implement the same controls for Linux while without interrupting audio streaming (other attempts at this required driver swapping).
+Audient software is Win/macOS only. CLI `evoctl` and TUI `evotui` implement the same controls for Linux without interrupting audio flow.
 
-**How?** A small kernel module (`evo_raw`) binds to the EVO's unused DFU interface to obtain device handle, allowing it to coexist with `snd-usb-audio`.
+**How?** A small kernel module `evo_raw` binds EVO's unused DFU interface to obtain device handle without detaching `snd-usb-audio`.
 
 | Controls | Loopback Mixer |
 |----------|----------------|
@@ -12,64 +12,49 @@ Audient software is Win/macOS only. CLI `evoctl` and TUI `evotui` implement the 
 
 ## Supported Devices
 
-| | EVO 4 | EVO 8 (needs testing)|
+| | EVO 4 | EVO 8|
 |---|---|---|
-| Inputs | 2 | 4 |
-| Output pairs | 1 (OUT 1/2) | 2 (OUT 1/2, OUT 3/4) |
-| Gain range | -8 to +50 dB | 0 to +58 dB |
-| Direct monitor | Yes (EU56 blend) | Via mixer |
-| Mixer matrix | 6x2 | 10x4 |
 | Device node | `/dev/evo4` | `/dev/evo8` |
 
 ## Requirements
 
-- Linux with `snd-usb-audio` (standard kernel audio)
-- Kernel headers (`linux-headers` package) and `make` - for building the kernel module
-- DKMS - optional but recommended; without it the module will stop loading after a kernel update and must be reinstalled (re-running the install script suffices - no source changes needed)
-- User in the `dialout` group - for device access without sudo (the install script can do this)
-- Python 3.10+ - the only runtime dependency; `pipx` is recommended for install
-
-### Testing
-
-Python dependencies:
-- `pytest` to run `tests/`.
-- `sounddevice` for audio simulation
-- `numpy` for sound generation
+- `snd-usb-audio` (standard linux kernel audio)
+- `linux-headers` (kernel header files) and `make` - to build kernel module
+- `dkms` (Dynamic Kernel Module Support) - optional but without it the module stops loading after a kernel update until reinstalled with kmod/install.sh
+- `python3` (>=v3.10)
+  - `pipx` to install (optional but recommended)
 
 ## Install
 
+### CLI evoctl / TUI evotui
+
+Recommended install using `pipx` for `evoctl` & `evotui` commands:
+
+```bash
+python3 -m pip install --user pipx
+pipx ensurepath
+pipx install path/to/audient-evo-py
+```
+
 ### Kernel module
 
-Installs via DKMS, adds a udev rule, and loads the module. The install script prompts for which device to configure.
+Builds and installs kernel module, adds udev rule loads the module.
 
-*For `systemd service` that auto-loads default config on system start or device replug, install `evoctl` locally using pipx (or adjust the evo*-load-config.service as needed).
+Optional steps (prompted by install.sh):
+- Install using DKMS (to auto-rebuild after kernel update)
+- Setup systemd service for automatic config loading (e.g. system start, device reconnect).
 
 ```bash
 cd kmod
 sudo ./install.sh
 ```
 
-### evoctl / evotui
-
-No external Python dependencies. Runs directly from the repo:
-
-```bash
-python evoctl.py set volume -20
-python -m tui
-```
-
-Or install `evoctl` & `evotui` commands with `pipx`:
-
-```bash
-pipx install .
-```
-
 ### WirePlumber config (optional, recommended)
 
-EVO devices expose extra USB audio channels (loopback bus) that PipeWire treats as surround without configuration. The install script prompts for your device and sets up:
+Without explicit configuration, EVO devices expose extra USB audio channels (loopback bus) that PipeWire treats as surround. The `wireplumber/install.sh` script prompts for your device and sets up:
 
 - Stereo-only output (disables upmix to loopback channels)
-- Virtual sinks/sources for loopback routing
+- Explicit sinks/sources for loopback routing
 - Idle suspension disabled (prevents clicks on stream start)
 - Default sink/source at login
 
@@ -95,76 +80,31 @@ pipx uninstall audient-evo-py
 ## Usage
 
 ```bash
-# Volume (both devices)
 evoctl set volume -20
 evoctl get volume
-
-# EVO 8: second output pair
-evoctl set volume -20 -t output2
-evoctl get volume -t output2
-
-# Input gain (per-channel)
 evoctl set gain 50 -t input1
-evoctl set gain 30 -t input3   # EVO 8: inputs 3-4
-
-# Mute
-evoctl set mute 1 -t output    # EVO 4: single output
-evoctl set mute 1 -t output2   # EVO 8: second output pair
-
-# Phantom power
+evoctl set mute 1 -t output
 evoctl set phantom 1 -t input1
-
-# Monitor mix (EVO 4 only)
-evoctl set monitor 50           # 0=input only, 100=playback only
-
-# Loopback mixer
+evoctl set monitor 50              # EVO 4 only - 0=input, 100=playback
 evoctl mixer input1 --volume -6 --pan 0
-evoctl mixer output --volume -6 --pan-l -100 --pan-r 100
-evoctl mixer loopback --volume -128
-evoctl mixer input1 --volume -6 --pan 0 --mix-bus 1  # EVO 8: second mix bus
-
-# Status / config
 evoctl status
-evoctl status -f json
-evoctl save
-evoctl load
-
-# Diagnostics (works without device connected)
-evoctl diag
-
-# Device selection (when multiple connected)
-evoctl --device evo8 set volume -20
-
-# TUI
-python -m tui
-# or just
-evotui           # after pipx install
+evoctl save / load
+evoctl diag                        # works without device connected
+evoctl --device evo8 set volume -20  # when multiple devices connected
+evotui                             # TUI
 ```
 
-Mixer settings are write-only; changes are auto-saved to `~/.config/audient-evo-py/{evo4,evo8}/.mixer-state.json`. Device controls can be saved/loaded via CLI or TUI.
+Use `-t` to target specific channels (e.g. `-t input3`, `-t output2`). See `evoctl --help` for all options.
 
-## Diagnostics
+Mixer settings are write-only and auto-saved to `~/.config/audient-evo-py/`. Device controls can be saved/loaded via `evoctl save/load` or TUI.
 
-`evoctl diag` collects system, USB, kernel module, audio stack, and device info as JSON. Useful for debugging:
-
-```bash
-evoctl diag > diag.json
-```
-
-## Components
-
-| Component | Description |
-|-----------|-------------|
-| `kmod/` | Out-of-tree kernel module (`evo_raw.c`), exposes `/dev/evo*` |
-| `evo/` | Backend - device specs, kmod wrapper, controller, config tools |
-| `tui/` | Terminal UI using curses |
-| `wireplumber/` | PipeWire + WirePlumber config for correct channel mapping |
+## Design
 
 See [DESIGN.md](dev/DESIGN.md) for architecture, protocol, and USB entity details.
 
 ## Related Projects
 
-Partially working, quirky, other platforms, ... - very helpful nonetheless.
+Partially working, with quirks, written for other platforms, ... - very helpful nonetheless.
 
 - [subsubl/Evo4mixer](https://github.com/subsubl/Evo4mixer)
 - [vijay-prema/audient-evo-linux-tools](https://github.com/vijay-prema/audient-evo-linux-tools/tree/main)
@@ -176,9 +116,8 @@ Partially working, quirky, other platforms, ... - very helpful nonetheless.
 
 ## Notice
 
-EVO 4 is fully tested. EVO 8 needs testing with hardware (I do not own one) - see [docs/EVO8-TESTING.md](docs/EVO8-TESTING.md) if you can help.
+EVO 4 is fully tested. EVO 8 needs testing with hardware - see [dev/EVO8-TESTING.md](dev/EVO8-TESTING.md) if you can help. Open an issue if you own an EVO device and are willing to cooperate.
 
-If you own Audient EVO device and are willing to cooperate, you're welcome to open an issue.
 
 ## License
 

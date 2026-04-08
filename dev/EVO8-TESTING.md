@@ -5,9 +5,7 @@ Help test EVO 8 step-by-step.
 ## Prerequisites
 
 - Audient EVO 8 
-- Linux with kernel headers and `make`
-- Python 3.10+
-- `git clone` of this repo
+- See `README.md` in root for requirements and install guide - for simplicity, treat all recommendations (except for DKMS) as requirements.
 
 ## Install
 
