@@ -11,21 +11,37 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-# Check dependencies
-for cmd in dkms make; do
-    if ! command -v "$cmd" &>/dev/null; then
-        echo "Error: '$cmd' is not installed."
-        echo "Install it with your package manager (e.g. pacman -S dkms base-devel)"
-        exit 1
-    fi
-done
+# Check required dependencies
+if ! command -v make &>/dev/null; then
+    echo "Error: 'make' is not installed."
+    echo "Install it with your package manager (e.g. apt install build-essential, pacman -S base-devel)"
+    exit 1
+fi
 
 # Check kernel headers
 KDIR="/lib/modules/$(uname -r)/build"
 if [[ ! -d "$KDIR" ]]; then
     echo "Error: kernel headers not found at $KDIR"
-    echo "Install them (e.g. pacman -S linux-headers)"
+    echo "Install them (e.g. apt install linux-headers-\$(uname -r), pacman -S linux-headers)"
     exit 1
+fi
+
+# Check for DKMS (optional but recommended)
+USE_DKMS=0
+if command -v dkms &>/dev/null; then
+    USE_DKMS=1
+else
+    echo "Warning: 'dkms' is not installed."
+    echo "  Kernel modules are version-stamped: after a kernel update the module"
+    echo "  will stop loading and you will need to re-run this install script."
+    echo "  DKMS automates that rebuild. It is recommended:"
+    echo "    apt install dkms  OR  pacman -S dkms"
+    echo ""
+    read -p "Continue without DKMS? (y/n) " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
 fi
 
 # Device selection - discover available devices from udev rule files
@@ -57,37 +73,57 @@ fi
 SELECTED="${AVAILABLE[$((DEVICE_CHOICE-1))]}"
 DEVICES=("$SELECTED")
 
-# Remove previous version if installed
-if dkms status "${MODULE_NAME}/${MODULE_VERSION}" 2>/dev/null | grep -q "${MODULE_NAME}"; then
-    echo "Removing existing DKMS module..."
-    dkms remove "${MODULE_NAME}/${MODULE_VERSION}" --all
+if [[ $USE_DKMS -eq 1 ]]; then
+    # DKMS install
+
+    # Remove previous version if installed
+    if dkms status "${MODULE_NAME}/${MODULE_VERSION}" 2>/dev/null | grep -q "${MODULE_NAME}"; then
+        echo "Removing existing DKMS module..."
+        dkms remove "${MODULE_NAME}/${MODULE_VERSION}" --all
+    fi
+
+    # Also remove legacy evo4_raw if present
+    if dkms status "evo4_raw/${MODULE_VERSION}" 2>/dev/null | grep -q "evo4_raw"; then
+        echo "Removing legacy evo4_raw DKMS module..."
+        dkms remove "evo4_raw/${MODULE_VERSION}" --all
+    fi
+    if lsmod | grep -q "^evo4_raw"; then
+        echo "Unloading legacy evo4_raw module..."
+        rmmod evo4_raw
+    fi
+
+    # Copy source to /usr/src
+    echo "Copying module source to ${SRC_DIR}..."
+    rm -rf "$SRC_DIR"
+    mkdir -p "$SRC_DIR"
+    cp "$SCRIPT_DIR"/{evo_raw.c,Makefile,dkms.conf} "$SRC_DIR/"
+
+    echo "Adding module to DKMS..."
+    dkms add "${MODULE_NAME}/${MODULE_VERSION}"
+
+    echo "Building module..."
+    dkms build "${MODULE_NAME}/${MODULE_VERSION}"
+
+    echo "Installing module..."
+    dkms install "${MODULE_NAME}/${MODULE_VERSION}"
+else
+    # Manual install (no DKMS)
+
+    # Remove legacy evo4_raw if present
+    if lsmod | grep -q "^evo4_raw"; then
+        echo "Unloading legacy evo4_raw module..."
+        rmmod evo4_raw
+    fi
+
+    echo "Building module..."
+    make -C "$SCRIPT_DIR" all
+
+    echo "Installing module..."
+    make -C "$SCRIPT_DIR" install
+
+    # Enable auto-load on boot
+    echo "$MODULE_NAME" > /etc/modules-load.d/evo_raw.conf
 fi
-
-# Also remove legacy evo4_raw if present
-if dkms status "evo4_raw/${MODULE_VERSION}" 2>/dev/null | grep -q "evo4_raw"; then
-    echo "Removing legacy evo4_raw DKMS module..."
-    dkms remove "evo4_raw/${MODULE_VERSION}" --all
-fi
-if lsmod | grep -q "^evo4_raw"; then
-    echo "Unloading legacy evo4_raw module..."
-    rmmod evo4_raw
-fi
-
-# Copy source to /usr/src
-echo "Copying module source to ${SRC_DIR}..."
-rm -rf "$SRC_DIR"
-mkdir -p "$SRC_DIR"
-cp "$SCRIPT_DIR"/{evo_raw.c,Makefile,dkms.conf} "$SRC_DIR/"
-
-# DKMS: add, build, install
-echo "Adding module to DKMS..."
-dkms add "${MODULE_NAME}/${MODULE_VERSION}"
-
-echo "Building module..."
-dkms build "${MODULE_NAME}/${MODULE_VERSION}"
-
-echo "Installing module..."
-dkms install "${MODULE_NAME}/${MODULE_VERSION}"
 
 # Install udev rules for selected devices
 for dev in "${DEVICES[@]}"; do
@@ -100,6 +136,24 @@ udevadm control --reload-rules
 # Load module
 echo "Loading module..."
 modprobe "$MODULE_NAME"
+
+# Add user to dialout group
+if [[ -n "${SUDO_USER:-}" ]]; then
+    if groups "$SUDO_USER" | grep -qw 'dialout'; then
+        echo "User '$SUDO_USER' is already in the 'dialout' group."
+    else
+        echo ""
+        echo "Users must be in the 'dialout' group to access /dev/${SELECTED} without sudo."
+        read -p "Add '$SUDO_USER' to the 'dialout' group now? (y/n) " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            usermod -a -G dialout "$SUDO_USER"
+            echo "Done. Log out and back in (or reboot) for the group change to take effect."
+        else
+            echo "Skipped. Run manually when ready: sudo usermod -a -G dialout $SUDO_USER"
+        fi
+    fi
+fi
 
 # Optional: Setup auto-load config on device connection
 echo ""
@@ -141,7 +195,7 @@ if [[ $SETUP_AUTOLOAD =~ ^[Yy]$ ]]; then
                 echo "View logs with: journalctl --user -u ${dev}-load-config.service -f"
             done
         else
-            echo "Error: 'evoctl' not found in $TARGET_USER's PATH."
+            echo "Error: 'evoctl' not found at $EVOCTL_PATH"
             echo "Install it first with: pipx install ."
             echo "Skipping auto-load setup."
         fi
@@ -151,6 +205,10 @@ fi
 echo ""
 echo "Done. ${MODULE_NAME} is installed and loaded."
 for dev in "${DEVICES[@]}"; do
-    echo "Users in the 'dialout' group can access /dev/${dev} when the device is connected."
+    echo "  /dev/${dev} will be available when the device is connected."
 done
-echo "The module will auto-rebuild on kernel updates."
+if [[ $USE_DKMS -eq 1 ]]; then
+    echo "  The module will auto-rebuild on kernel updates (DKMS)."
+else
+    echo "  Note: Without DKMS, re-run this install script after each kernel update."
+fi

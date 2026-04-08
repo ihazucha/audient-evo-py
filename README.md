@@ -24,7 +24,9 @@ Audient software is Win/macOS only. CLI `evoctl` and TUI `evotui` implement the 
 ## Requirements
 
 - Linux with `snd-usb-audio` (standard kernel audio)
-- Kernel headers (`linux-headers` package) and DKMS - for the kernel module
+- Kernel headers (`linux-headers` package) and `make` - for building the kernel module
+- DKMS - optional but recommended; without it the module will stop loading after a kernel update and must be reinstalled (re-running the install script suffices - no source changes needed)
+- User in the `dialout` group - for device access without sudo (the install script can do this)
 - Python 3.10+ - the only runtime dependency; `pipx` is recommended for install
 
 ### Testing
