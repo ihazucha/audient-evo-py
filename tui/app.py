@@ -229,6 +229,14 @@ class EvoTUI:
         )
         self._mixer_section_h = self._max_pan * 2 + 5
 
+        # Per-device mixer section width (EVO 4 gets 4 extra chars per section)
+        if self.spec.num_output_pairs == 1:
+            self._mixer_section_iw = MIXER_SECTION_IW + 4
+            self._mixer_pan_half = MIXER_PAN_HALF + 2
+        else:
+            self._mixer_section_iw = MIXER_SECTION_IW
+            self._mixer_pan_half = MIXER_PAN_HALF
+
         # Compute controls body height
         if self._has_subsections:
             left_n = len(self._element_groups[0][1])
@@ -595,7 +603,9 @@ class EvoTUI:
         self._safe(scr, row, cx + 2, label, self._box_attr)
         self._safe(scr, row, cx + 2 + len(label), " " + d * dashes + e, self._box_attr)
 
-    def _box_top_centered(self, scr, row, cx, label, active=False, iw=MIXER_SECTION_IW):
+    def _box_top_centered(self, scr, row, cx, label, active=False, iw=None):
+        if iw is None:
+            iw = self._mixer_section_iw
         self._box_attr = curses.A_BOLD if active else curses.color_pair(C_WHITE) | curses.A_DIM
         self._box_active = active
         h, d = (BOX_TL_A, BOX_H_A) if active else (BOX_TL, BOX_H)
@@ -674,8 +684,8 @@ class EvoTUI:
         self._safe(scr, row, x + half, BOX_V, curses.A_BOLD)
 
     def _narrow_pan_slider(self, scr, row, x, frac, sel=False, color=C_GREEN):
-        """Narrow pan slider using half/full block precision. Width = 2*MIXER_PAN_HALF+1."""
-        H = MIXER_PAN_HALF
+        """Narrow pan slider using half/full block precision. Width = 2*self._mixer_pan_half+1."""
+        H = self._mixer_pan_half
         total_slots = H * 2
         fill_attr = curses.color_pair(color) | (curses.A_NORMAL if sel else curses.A_DIM)
         empty_attr = curses.color_pair(C_WHITE) | (curses.A_NORMAL if sel else curses.A_DIM)
@@ -806,11 +816,12 @@ class EvoTUI:
             box_attr = curses.color_pair(C_CYAN) | (curses.A_BOLD if sel_sec else curses.A_NORMAL)
         else:
             box_attr = None
-        self._box_top(scr, top_row, cx, label, sel_sec, iw=MIXER_SECTION_IW, attr=box_attr)
+        siw = self._mixer_section_iw
+        self._box_top(scr, top_row, cx, label, sel_sec, iw=siw, attr=box_attr)
         row = top_row + 1
 
         for slot in range(len(pan_params) if compact else self._max_pan):
-            self._box_side(scr, row, cx, MIXER_SECTION_IW)
+            self._box_side(scr, row, cx, siw)
             if slot < len(pan_params):
                 pidx, (param, _, lo, hi, _) = pan_params[slot]
                 val = mstate[key][param]
@@ -818,7 +829,7 @@ class EvoTUI:
                 self._narrow_pan_slider(scr, row, cx + 2, (val - lo) / (hi - lo), sel, color)
             row += 1
 
-            self._box_side(scr, row, cx, MIXER_SECTION_IW)
+            self._box_side(scr, row, cx, siw)
             if slot < len(pan_params):
                 pidx, (param, plabel, lo, hi, _) = pan_params[slot]
                 val = mstate[key][param]
@@ -827,31 +838,31 @@ class EvoTUI:
                     scr,
                     row,
                     cx + 2,
-                    f"{plabel + ':':<9} {val:+5.0f}",
+                    f"{plabel + ':':<{siw - 8}} {val:+5.0f}",
                     curses.A_BOLD if sel else curses.A_DIM,
                 )
             row += 1
 
-        self._box_side(scr, row, cx, MIXER_SECTION_IW)
+        self._box_side(scr, row, cx, siw)
         row += 1
 
         vol_frac = max(0.0, min(1.0, (vol_val - _MIXER_DB_MIN) / (_MIXER_DB_MAX - _MIXER_DB_MIN)))
         vol_sel = sel_sec and self._mixer_param == vol_param_idx
-        self._box_side(scr, row, cx, MIXER_SECTION_IW)
-        self._hslider(scr, row, cx + 2, vol_frac, sel=vol_sel, color=color, w=MIXER_SECTION_IW - 2)
+        self._box_side(scr, row, cx, siw)
+        self._hslider(scr, row, cx + 2, vol_frac, sel=vol_sel, color=color, w=siw - 2)
         row += 1
 
-        self._box_side(scr, row, cx, MIXER_SECTION_IW)
+        self._box_side(scr, row, cx, siw)
         self._safe(
             scr,
             row,
             cx + 2,
-            f"{'Vol:':<5} {vol_val:+6.1f} dB",
+            f"{'Vol:':<{siw - 12}} {vol_val:+6.1f} dB",
             curses.A_BOLD if vol_sel else curses.A_DIM,
         )
         row += 1
 
-        self._box_bot(scr, row, cx, MIXER_SECTION_IW)
+        self._box_bot(scr, row, cx, siw)
 
     # -- file picker dialog --
 
@@ -936,7 +947,7 @@ class EvoTUI:
 
         # Compute layout width — controls always matches mixer so both tabs are equal width
         max_row_len = max(len(row) for row in self._mixer_rows)
-        mixer_w = max_row_len * (MIXER_SECTION_IW + 3) - 1
+        mixer_w = max_row_len * (self._mixer_section_iw + 3) - 1
         cx = max(0, (w - mixer_w) // 2)
 
         self._total_h = 2 + self._controls_body_h + 3
@@ -1016,7 +1027,7 @@ class EvoTUI:
         EVO 4: static single bus ending with '▶ LOOP IN 1|2' label.
         EVO 8: interactive bus selector with two output pair labels.
         """
-        sec_ow = MIXER_SECTION_IW + 3
+        sec_ow = self._mixer_section_iw + 3
         dim = curses.color_pair(C_WHITE) | curses.A_DIM
         bus_attr = curses.color_pair(C_CYAN) | curses.A_BOLD
         mstate = self._cur_mixer_state()
@@ -1029,7 +1040,7 @@ class EvoTUI:
         output_wall_positions = set()
         for i, (key, _, _, _) in enumerate(self._mixer_rows[1]):
             if mstate.get(key, {}).get("volume", _MIXER_DB_MIN) > _MIXER_DB_MIN:
-                output_wall_positions.add(i * sec_ow + MIXER_SECTION_IW + 1)
+                output_wall_positions.add(i * sec_ow + self._mixer_section_iw + 1)
 
         jx = cx + width  # right junction column
 
@@ -1087,7 +1098,7 @@ class EvoTUI:
                 self._safe(scr, row, label_x, bus_labels[1], attr1)
 
     def _draw_mixer_body(self, scr, row, cx):
-        sec_ow = MIXER_SECTION_IW + 3
+        sec_ow = self._mixer_section_iw + 3
         sections = self._flat_mixer_sections()
 
         if len(self._mixer_rows) == 1:
