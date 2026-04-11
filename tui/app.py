@@ -43,7 +43,7 @@ SL_FULL, ARROW_R, ARROW_R_EMPTY, ARROW_L = "\u25ac", "\u25b6", "\u25b7", "\u2190
 ARROW_D, ARROW_U = "\u2193", "\u2191"  # ↓ ↑
 ARROWS = "\u2190\u2193\u2191\u2192"  # ←↓↑→
 PM, CHEVRON = "\u00b1", "\u276f"  # ± ❯
-TAB_SYM = "\u21b9"  # ↹
+TAB_SYM = "Tab"
 HSEP = " \u00b7 "  # help separator: ·
 
 
@@ -289,9 +289,9 @@ class EvoTUI:
     def _build_controls_help(self):
         """Return (nav_hints, set_hints) as lists of (key, desc[, color]) tuples."""
         if self._has_subsections:
-            nav_hints = [("hjkl", f" {ARROWS}"), (TAB_SYM, " Tab")]
+            nav_hints = [("hjkl", f" {ARROWS}"), (TAB_SYM, " tab")]
         else:
-            nav_hints = [("jk", f" {ARROW_D}{ARROW_U}"), (TAB_SYM, " Tab")]
+            nav_hints = [("jk", f" {ARROW_D}{ARROW_U}"), (TAB_SYM, " tab")]
         set_hints = [("[]", f" {PM}1"), ("{}", f" {PM}5"), ("0-9", " dial")]
         if self._has_mute(self.cursor):
             set_hints.append(("m", " mute"))
@@ -307,8 +307,8 @@ class EvoTUI:
         big = "5" if param == "volume" else "25"
         nav_hints = [
             ("hjkl", f" {ARROWS}"),
-            ("\u2423", " next"),
-            (TAB_SYM, " Tab"),
+            ("Space", " next"),
+            (TAB_SYM, " tab"),
         ]
         set_hints = [("[]", f" {PM}{step}"), ("{}", f" {PM}{big}"), ("0-9", " dial")]
         if self.spec.num_output_pairs > 1:
@@ -328,7 +328,8 @@ class EvoTUI:
                 if i:
                     self._safe(scr, r, col, HSEP, dim)
                     col += len(HSEP)
-                self._safe(scr, r, col, key, curses.color_pair(color) | curses.A_BOLD)
+                key_style = curses.color_pair(color) | curses.A_BOLD
+                self._safe(scr, r, col, key, key_style)
                 col += len(key)
                 self._safe(scr, r, col, desc, dim)
                 col += len(desc)
@@ -510,11 +511,14 @@ class EvoTUI:
         self._file_cursor = self._file_scroll = 0
         self._mode = "load"
 
-    def _picker_move(self, delta):
+    def _picker_move(self, delta, wrap=False):
         n = len(self._file_list)
         if not n:
             return
-        self._file_cursor = max(0, min(n - 1, self._file_cursor + delta))
+        if wrap:
+            self._file_cursor = (self._file_cursor + delta) % n
+        else:
+            self._file_cursor = max(0, min(n - 1, self._file_cursor + delta))
         if self._file_cursor < self._file_scroll:
             self._file_scroll = self._file_cursor
         elif self._file_cursor >= self._file_scroll + PICKER_LIST_H:
@@ -525,10 +529,14 @@ class EvoTUI:
             self._mode = "normal"
             return
         if self._mode == "load":
-            if key in (curses.KEY_UP, ord("k")):
+            if key == curses.KEY_UP:
                 self._picker_move(-1)
-            elif key in (curses.KEY_DOWN, ord("j")):
+            elif key == curses.KEY_DOWN:
                 self._picker_move(1)
+            elif key == curses.KEY_BTAB:
+                self._picker_move(-1, wrap=True)
+            elif key == 9:
+                self._picker_move(1, wrap=True)
             elif key == 10 and self._file_list:
                 path = self._file_list[self._file_cursor]
                 try:
@@ -540,12 +548,20 @@ class EvoTUI:
                     self._set_status(f"Load error: {e}", err=True)
                 self._mode = "normal"
         else:  # save
-            if key in (curses.KEY_UP, ord("k")):
+            if key == curses.KEY_UP:
                 self._picker_move(-1)
                 if self._file_list:
                     self._file_input = self._file_list[self._file_cursor].stem
-            elif key in (curses.KEY_DOWN, ord("j")):
+            elif key == curses.KEY_DOWN:
                 self._picker_move(1)
+                if self._file_list:
+                    self._file_input = self._file_list[self._file_cursor].stem
+            elif key == curses.KEY_BTAB:
+                self._picker_move(-1, wrap=True)
+                if self._file_list:
+                    self._file_input = self._file_list[self._file_cursor].stem
+            elif key == 9:
+                self._picker_move(1, wrap=True)
                 if self._file_list:
                     self._file_input = self._file_list[self._file_cursor].stem
             elif key in (curses.KEY_BACKSPACE, 127):
@@ -693,8 +709,8 @@ class EvoTUI:
         else:
             ctrl_attr = dim
             mix_attr = curses.A_REVERSE | curses.A_BOLD
-        self._safe(scr, row, cx, ctrl_label, ctrl_attr)
-        mix_x = cx + len(ctrl_label) + 1
+        self._safe(scr, row, cx + 1, ctrl_label, ctrl_attr)
+        mix_x = cx + 1 + len(ctrl_label) + 1
         self._safe(scr, row, mix_x, mix_label, mix_attr)
 
         # Device name right-aligned and dimmed
@@ -707,7 +723,7 @@ class EvoTUI:
 
         # Erase under active tab (gives it a "connected" look)
         if self._window == "controls":
-            active_x = cx
+            active_x = cx + 1
             active_label_w = len(ctrl_label)
         else:
             active_x = mix_x
@@ -808,7 +824,9 @@ class EvoTUI:
                 pan_val_attr = (
                     curses.color_pair(C_YELLOW) | curses.A_BOLD
                     if sel and self.num_buf
-                    else curses.A_BOLD if sel else curses.A_DIM
+                    else curses.A_BOLD
+                    if sel
+                    else curses.A_DIM
                 )
                 self._safe(
                     scr,
@@ -832,7 +850,9 @@ class EvoTUI:
         vol_val_attr = (
             curses.color_pair(C_YELLOW) | curses.A_BOLD
             if vol_sel and self.num_buf
-            else curses.A_BOLD if vol_sel else curses.A_DIM
+            else curses.A_BOLD
+            if vol_sel
+            else curses.A_DIM
         )
         self._safe(
             scr,
@@ -863,7 +883,7 @@ class EvoTUI:
         path_str = str(self._config_dir) + "/"
         max_path = BOX_IW - len(action) - 5  # fixed overhead: "─ " + " " + " ─...─┐"
         if len(path_str) > max_path:
-            path_str = "\u2026" + path_str[-(max_path - 1):]
+            path_str = "\u2026" + path_str[-(max_path - 1) :]
         title = f"{action} {path_str}"
         title_dashes = BOX_IW - len(title) - 3
         self._safe(scr, row, cx, BOX_TL + BOX_H + " ", dim)
@@ -903,7 +923,7 @@ class EvoTUI:
 
         # Bottom border with hints (right-aligned, same style as status bar)
         action = "save" if self._mode == "save" else "load"
-        hints = [("jk", f" {ARROW_D}{ARROW_U}"), ("\u21b5", f" {action}"), ("Esc", " cancel")]
+        hints = [("Tab", f" {ARROW_D}{ARROW_U}"), ("\u21b5", f" {action}"), ("Esc", " cancel")]
         hints_content_w = sum(len(h[0]) + len(h[1]) for h in hints) + len(HSEP) * (len(hints) - 1)
         hints_w = 1 + hints_content_w + 2  # leading space + content + trailing " ─"
         bot_dashes = BOX_IW - hints_w
@@ -1154,7 +1174,7 @@ class EvoTUI:
         # Compute width of hints block: " key desc · key desc … key desc "
         hints_w = 1 + sum(len(h[0]) + len(h[1]) for h in hints) + len(HSEP) * (len(hints) - 1) + 1
         dashes = section_w - 1 - hints_w
-        # Draw dashes then trailing BOX_H — same total width as tab bar underline
+        # Draw dashes
         self._safe(scr, row, cx, BOX_H * dashes, dim)
         self._safe(scr, row, cx + section_w - 1, BOX_H, dim)
         # Draw hints right-aligned, keys highlighted
@@ -1189,14 +1209,14 @@ class EvoTUI:
 
     def _controls_key(self, key):
         elems = self._active_elements()
-        if key in (ord("j"), ord("J")):
+        if key in (ord("j"), ord("J"), curses.KEY_DOWN):
             self.cursor = (self.cursor + 1) % len(elems)
-        elif key in (ord("k"), ord("K")):
+        elif key in (ord("k"), ord("K"), curses.KEY_UP):
             self.cursor = (self.cursor - 1) % len(elems)
-        elif key in (ord("l"), ord("L")) and self._has_subsections:
+        elif key in (ord("l"), ord("L"), curses.KEY_RIGHT) and self._has_subsections:
             self._controls_subsection = (self._controls_subsection + 1) % len(self._element_groups)
             self.cursor = 0
-        elif key in (ord("h"), ord("H")) and self._has_subsections:
+        elif key in (ord("h"), ord("H"), curses.KEY_LEFT) and self._has_subsections:
             self._controls_subsection = (self._controls_subsection - 1) % len(self._element_groups)
             self.cursor = 0
         elif key == ord("m"):
@@ -1215,23 +1235,23 @@ class EvoTUI:
         n_params = len(self._all_mixer_sections[self._mixer_section][3])
         num_rows = len(self._mixer_rows)
         r, c = self._mixer_row_col()
-        if key in (ord("l"), ord("L")):
+        if key in (ord("l"), ord("L"), curses.KEY_RIGHT):
             new_sec = (
                 self._mixer_section_at(r, c + 1)
                 if c + 1 < len(self._mixer_rows[r])
                 else self._mixer_section_at(r, 0)
             )
             self._select_mixer_section(new_sec)
-        elif key in (ord("h"), ord("H")):
+        elif key in (ord("h"), ord("H"), curses.KEY_LEFT):
             new_sec = (
                 self._mixer_section_at(r, c - 1)
                 if c > 0
                 else self._mixer_section_at(r, len(self._mixer_rows[r]) - 1)
             )
             self._select_mixer_section(new_sec)
-        elif key == ord("j") and num_rows > 1:
+        elif key in (ord("j"), curses.KEY_DOWN) and num_rows > 1:
             self._select_mixer_section(self._mixer_section_at((r + 1) % num_rows, c))
-        elif key == ord("k") and num_rows > 1:
+        elif key in (ord("k"), curses.KEY_UP) and num_rows > 1:
             self._select_mixer_section(self._mixer_section_at((r - 1) % num_rows, c))
         elif key == ord("m") and self.spec.num_output_pairs > 1:
             self._mixer_bus = (self._mixer_bus + 1) % self.spec.num_output_pairs
