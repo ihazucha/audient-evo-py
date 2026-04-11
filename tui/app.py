@@ -19,65 +19,32 @@ SLIDER_OFF = 2
 PICKER_LIST_H = 6
 
 PAN_MIN, PAN_MAX, PAN_STEP = -100.0, 100.0, 5.0
-MIXER_SECTION_IW = 17
-MIXER_PAN_HALF = 7  # half-width of narrow pan slider (total = 2*HALF+1 = 15)
-
-# Two-column layout for EVO 8 controls
-COL_SLIDER_W = 31
-COL_BOX_IW = COL_SLIDER_W + 2  # 33
+MIN_MIXER_SECTION_IW = 17
+MIN_MIXER_PAN_HALF = 7
 COL_GAP = 1
 
-# ── Box drawing - active (heavy) ─────────────────────────────────────────────
-BOX_TL_A = "\u250f"  # ┏
-BOX_H_A = "\u2501"  # ━
-BOX_TR_A = "\u2513"  # ┓
-BOX_V_A = "\u2503"  # ┃
-BOX_BL_A = "\u2517"  # ┗
-BOX_BR_A = "\u251b"  # ┛
-BOX_ML_A = "\u2523"  # ┣
-BOX_MR_A = "\u252b"  # ┫
+# Box drawing - active (heavy) / inactive (light)
+BOX_TL_A, BOX_H_A, BOX_TR_A = "\u250f", "\u2501", "\u2513"  # ┏ ━ ┓
+BOX_V_A, BOX_BL_A, BOX_BR_A = "\u2503", "\u2517", "\u251b"  # ┃ ┗ ┛
+BOX_ML_A, BOX_MR_A = "\u2523", "\u252b"  # ┣ ┫
+BOX_TL, BOX_H, BOX_TR = "\u250c", "\u2500", "\u2510"  # ┌ ─ ┐
+BOX_V, BOX_BL, BOX_BR = "\u2502", "\u2514", "\u2518"  # │ └ ┘
+BOX_ML, BOX_MR = "\u251c", "\u2524"  # ├ ┤
 
-# ── Box drawing - inactive (light) ───────────────────────────────────────────
-BOX_TL = "\u250c"  # ┌
-BOX_H = "\u2500"  # ─
-BOX_TR = "\u2510"  # ┐
-BOX_V = "\u2502"  # │
-BOX_BL = "\u2514"  # └
-BOX_BR = "\u2518"  # ┘
-BOX_ML = "\u251c"  # ├
-BOX_MR = "\u2524"  # ┤
+# Bus junctions and double-line box drawing
+J_CROSS, J_T_UP, J_T_DOWN = "\u253c", "\u2534", "\u252c"  # ┼ ┴ ┬
+BUS_TL, BUS_TR, BUS_BL, BUS_BR = "\u2554", "\u2557", "\u255a", "\u255d"
+BUS_H, BUS_V = "\u2550", "\u2551"
+BUS_J_START, BUS_J_T_UP = "\u2558", "\u2567"  # ╘ ╧
+BUS_J_T_DOWN, BUS_J_CROSS = "\u2566", "\u2566"  # ╦ ╦
 
-# ── Bus / mixer junctions ─────────────────────────────────────────────────────
-J_CROSS = "\u253c"  # ┼
-J_T_UP = "\u2534"  # ┴
-J_T_DOWN = "\u252c"  # ┬
-
-# ── Bus double-line box drawing ───────────────────────────────────────────────
-BUS_TL = "\u2554"  # ╔
-BUS_TR = "\u2557"  # ╗
-BUS_BL = "\u255a"  # ╚
-BUS_BR = "\u255d"  # ╝
-BUS_H = "\u2550"  # ═
-BUS_J_START = "\u2558"  # ╘  (single up + double right) — leftmost input wall
-BUS_J_T_UP = "\u2567"  # ╧  (single up + double horizontal)   — input walls
-BUS_J_T_DOWN = "\u2566"  # ╦  (double down + double horizontal) — output walls
-BUS_J_CROSS = "\u2566"  # ╦  (double down dominates when both walls meet)
-BUS_V = "\u2551"  # ║  (double vertical) — connected output extension
-
-# ── Slider / indicator glyphs ─────────────────────────────────────────────────
-SL_FULL = "\u25ac"  # ▬
-ARROW_R = "\u25b6"  # ▶
-ARROW_L = "\u2190"  # ←
-ARROW_D = "\u2193"  # ↓
-ARROW_U = "\u2191"  # ↑
+# Slider / indicator glyphs
+SL_FULL, ARROW_R, ARROW_R_EMPTY, ARROW_L = "\u25ac", "\u25b6", "\u25b7", "\u2190"  # ▬ ▶ ▷ ←
+ARROW_D, ARROW_U = "\u2193", "\u2191"  # ↓ ↑
 ARROWS = "\u2190\u2193\u2191\u2192"  # ←↓↑→
-PM = "\u00b1"  # ±
-CHEVRON = "\u276f"  # ❯
-
-
-def _fmt_help(nav: list[str], step, big, unit: str) -> str:
-    """Build a help hint string: nav parts + adjust part joined by double-space."""
-    return "  ".join(nav + [f"u/d:{PM}{step}{unit} (U/D:{PM}{big})"])
+PM, CHEVRON = "\u00b1", "\u276f"  # ± ❯
+TAB_SYM = "\u21b9"  # ↹
+HSEP = " \u00b7 "  # help separator: ·
 
 
 def _build_elements(spec: DeviceSpec):
@@ -198,6 +165,7 @@ class EvoTUI:
         self.cursor = 0
         self.status = ""
         self.status_err = False
+        self.status_ticks = 0
         self.num_buf = ""
         self._mode = "normal"
         self._window = "controls"
@@ -207,6 +175,7 @@ class EvoTUI:
         self._file_input = ""
         self._slider_map = []
         self._box_attr = 0
+        self._text_cursor_pos = None  # (row, col) for terminal cursor, or None
 
         # Build dynamic layout from spec
         self._element_groups = _build_element_groups(self.spec)
@@ -219,23 +188,25 @@ class EvoTUI:
 
         # Mixer state
         self._mixer_bus = 0
-        all_sections = [sec for row in self._mixer_rows for sec in row]
+        self._all_mixer_sections = [sec for row in self._mixer_rows for sec in row]
         self._mixer_section = 0
-        self._mixer_param = len(all_sections[0][3]) - 1
+        self._mixer_param = len(self._all_mixer_sections[0][3]) - 1
         self._mixer_state = _build_mixer_state(self.spec)
 
         self._max_pan = max(
-            sum(1 for s in sec[3] if s[0].startswith("pan")) for sec in all_sections
+            sum(1 for s in sec[3] if s[0].startswith("pan")) for sec in self._all_mixer_sections
         )
         self._mixer_section_h = self._max_pan * 2 + 5
 
-        # Per-device mixer section width (EVO 4 gets 4 extra chars per section)
+        # Per-device mixer section width
+        # EVO 4: 2 sections must equal 3 EVO 8 sections (incl. gaps)
+        # 3*(17+3)-1=59 => 2*(iw+3)-1=59 => iw=27; pan_half=(27-17)/2+7=12
         if self.spec.num_output_pairs == 1:
-            self._mixer_section_iw = MIXER_SECTION_IW + 4
-            self._mixer_pan_half = MIXER_PAN_HALF + 2
+            self._mixer_section_iw = MIN_MIXER_SECTION_IW + 10
+            self._mixer_pan_half = MIN_MIXER_PAN_HALF + 5
         else:
-            self._mixer_section_iw = MIXER_SECTION_IW
-            self._mixer_pan_half = MIXER_PAN_HALF
+            self._mixer_section_iw = MIN_MIXER_SECTION_IW
+            self._mixer_pan_half = MIN_MIXER_PAN_HALF
 
         # Compute controls body height
         if self._has_subsections:
@@ -245,7 +216,7 @@ class EvoTUI:
         else:
             active_elements = self._active_elements()
             self._controls_body_h = len(active_elements) * 4 + (len(active_elements) - 1)
-        self._total_h = 2 + self._controls_body_h + 2  # recalculated each frame in _draw
+        self._total_h = 3 + self._controls_body_h + 5
 
         self._config_dir = cfg._device_dir(self.spec.name)
         self._load_mixer_state()
@@ -260,8 +231,8 @@ class EvoTUI:
         return self._element_groups[0][1]
 
     def _flat_mixer_sections(self):
-        """Return flat list of all mixer sections across rows."""
-        return [sec for row in self._mixer_rows for sec in row]
+        """Return cached flat list of all mixer sections across rows."""
+        return self._all_mixer_sections
 
     def _mixer_row_col(self):
         """Return (row_idx, col_idx) of the current mixer section."""
@@ -289,7 +260,7 @@ class EvoTUI:
             self._set_status(f"USB error: {e}", err=True)
 
     def _set_status(self, msg, err=False):
-        self.status, self.status_err = msg, err
+        self.status, self.status_err, self.status_ticks = msg, err, 150
 
     def _val(self, idx=None):
         if idx is None:
@@ -316,40 +287,55 @@ class EvoTUI:
         return self._active_elements()[idx][0].startswith("input")
 
     def _build_controls_help(self):
-        """Return (line1, line2) help strings for the controls window."""
-        unit = "dB" if self._is_db() else "%"
-        line1 = _fmt_help([f"jk:{ARROW_U}{ARROW_D}"], 1, 5, unit)
+        """Return (nav_hints, set_hints) as lists of (key, desc[, color]) tuples."""
+        if self._has_subsections:
+            nav_hints = [("hjkl", f" {ARROWS}"), (TAB_SYM, " Tab")]
+        else:
+            nav_hints = [("jk", f" {ARROW_D}{ARROW_U}"), (TAB_SYM, " Tab")]
+        set_hints = [("[]", f" {PM}1"), ("{}", f" {PM}5"), ("0-9", " dial")]
         if self._has_mute(self.cursor):
-            line1 += "  m:mute"
+            set_hints.append(("m", " mute"))
         if self._has_phantom(self.cursor):
-            line1 += "  P:48V"
-        return line1, "Tab:mixer  s:save  o:load  q:quit  0-9:set"
+            set_hints.append(("P", " 48V"))
+        return nav_hints, set_hints
 
     def _build_mixer_help(self):
-        """Return (line1, line2) help strings for the mixer window."""
+        """Return (nav_hints, set_hints) as lists of (key, desc[, color]) tuples."""
         sections = self._flat_mixer_sections()
         param = sections[self._mixer_section][3][self._mixer_param][0]
-        unit = "dB" if param == "volume" else ""
         step = "1" if param == "volume" else "5"
         big = "5" if param == "volume" else "25"
-        line1 = _fmt_help(
-            [f"hjkl:{ARROWS} channels", f"J/K:{ARROW_D}{ARROW_U} values"], step, big, unit
-        )
+        nav_hints = [
+            ("hjkl", f" {ARROWS}"),
+            ("\u2423", " next"),
+            (TAB_SYM, " Tab"),
+        ]
+        set_hints = [("[]", f" {PM}{step}"), ("{}", f" {PM}{big}"), ("0-9", " dial")]
         if self.spec.num_output_pairs > 1:
-            line1 += "  m:mix"
-        return line1, "Tab:controls  s:save  o:load  q:quit  0-9:set"
+            set_hints.append(("m", " mix", C_CYAN))
+        return nav_hints, set_hints
 
-    def _draw_help_footer(self, scr, row, cx, line1, line2):
-        """Draw help footer (two lines). Returns next row."""
+    def _draw_help_footer(self, scr, row, cx, nav_hints, set_hints):
+        """Draw help footer (two lines) with keys highlighted. Returns next row."""
         dim = curses.color_pair(C_WHITE) | curses.A_DIM
-        self._safe(scr, row, cx + 1, line1, dim)
-        tok = "m:mix"
-        pos = line1.find(tok)
-        if pos != -1:
-            self._safe(scr, row, cx + 1 + pos, tok, curses.color_pair(C_CYAN))
-        row += 1
-        self._safe(scr, row, cx + 1, line2, dim)
-        return row + 1
+        key_attr = curses.color_pair(C_WHITE) | curses.A_BOLD
+
+        def draw_hints(r, hints):
+            col = cx + 1
+            for i, hint in enumerate(hints):
+                key, desc = hint[0], hint[1]
+                color = hint[2] if len(hint) > 2 else C_WHITE
+                if i:
+                    self._safe(scr, r, col, HSEP, dim)
+                    col += len(HSEP)
+                self._safe(scr, r, col, key, curses.color_pair(color) | curses.A_BOLD)
+                col += len(key)
+                self._safe(scr, r, col, desc, dim)
+                col += len(desc)
+
+        draw_hints(row, nav_hints)
+        draw_hints(row + 1, set_hints)
+        return row + 2
 
     def _is_db(self, idx=None):
         return self._active_elements()[self.cursor if idx is None else idx][0] != "monitor"
@@ -512,7 +498,7 @@ class EvoTUI:
     def _enter_save_mode(self):
         self._file_list = self._scan_files()
         self._file_cursor = self._file_scroll = 0
-        self._file_input = "config.json"
+        self._file_input = "config"
         self._mode = "save"
 
     def _enter_load_mode(self):
@@ -554,26 +540,26 @@ class EvoTUI:
                     self._set_status(f"Load error: {e}", err=True)
                 self._mode = "normal"
         else:  # save
-            if key == curses.KEY_UP:
+            if key in (curses.KEY_UP, ord("k")):
                 self._picker_move(-1)
                 if self._file_list:
-                    self._file_input = self._file_list[self._file_cursor].name
-            elif key == curses.KEY_DOWN:
+                    self._file_input = self._file_list[self._file_cursor].stem
+            elif key in (curses.KEY_DOWN, ord("j")):
                 self._picker_move(1)
                 if self._file_list:
-                    self._file_input = self._file_list[self._file_cursor].name
+                    self._file_input = self._file_list[self._file_cursor].stem
             elif key in (curses.KEY_BACKSPACE, 127):
                 self._file_input = self._file_input[:-1]
             elif 32 <= key <= 126:
-                self._file_input += chr(key)
+                max_len = BOX_IW - len("File: ") - len(".json") - 1
+                if len(self._file_input) < max_len:
+                    self._file_input += chr(key)
             elif key == 10:
                 name = self._file_input.strip()
                 if name:
-                    if not name.endswith(".json"):
-                        name += ".json"
                     try:
-                        cfg.save(self.evo, self._config_dir / name)
-                        self._set_status(f"Saved {ARROW_R} {name}")
+                        cfg.save(self.evo, self._config_dir / (name + ".json"))
+                        self._set_status(f"Saved {ARROW_R} {name}.json")
                     except Exception as e:
                         self._set_status(f"Save error: {e}", err=True)
                 self._mode = "normal"
@@ -659,8 +645,8 @@ class EvoTUI:
         if empty:
             self._safe(scr, row, pos, BOX_H * empty, empty_attr)
 
-    def _dual_slider(self, scr, row, x, frac, sel=False, color=C_GREEN, w=SLIDER_W):
-        """Dual-side slider: fills from center outward with half-block precision."""
+    def _pan_slider(self, scr, row, x, frac, sel=False, color=C_GREEN, w=SLIDER_W):
+        """Center-origin slider: fills outward from midpoint with half-block precision."""
         half = w // 2
         fill_attr = curses.color_pair(color) | (curses.A_NORMAL if sel else curses.A_DIM)
         empty_attr = curses.color_pair(C_WHITE) | (curses.A_NORMAL if sel else curses.A_DIM)
@@ -668,10 +654,8 @@ class EvoTUI:
 
         left_slots = max(0, min(half * 2, round((1.0 - frac) * half * 2)))
         right_slots = half * 2 - left_slots
-        left_full = left_slots // 2
-        left_partial = left_slots % 2
-        right_full = right_slots // 2
-        right_partial = right_slots % 2
+        left_full, left_partial = divmod(left_slots, 2)
+        right_full, right_partial = divmod(right_slots, 2)
 
         if left_full:
             self._safe(scr, row, x + half - left_full, SL_FULL * left_full, fill_attr)
@@ -682,34 +666,6 @@ class EvoTUI:
         if right_partial:
             self._safe(scr, row, x + half + 1 + right_full, BOX_H_A, fill_attr)
         self._safe(scr, row, x + half, BOX_V, curses.A_BOLD)
-
-    def _narrow_pan_slider(self, scr, row, x, frac, sel=False, color=C_GREEN):
-        """Narrow pan slider using half/full block precision. Width = 2*self._mixer_pan_half+1."""
-        H = self._mixer_pan_half
-        total_slots = H * 2
-        fill_attr = curses.color_pair(color) | (curses.A_NORMAL if sel else curses.A_DIM)
-        empty_attr = curses.color_pair(C_WHITE) | (curses.A_NORMAL if sel else curses.A_DIM)
-
-        left_slots = max(0, min(total_slots, round((1.0 - frac) * total_slots)))
-        right_slots = total_slots - left_slots
-        left_full = left_slots // 2
-        left_partial = left_slots % 2
-        right_full = right_slots // 2
-        right_partial = right_slots % 2
-
-        self._safe(scr, row, x, BOX_H * H, empty_attr)
-        self._safe(scr, row, x + H + 1, BOX_H * H, empty_attr)
-
-        if left_full:
-            self._safe(scr, row, x + H - left_full, SL_FULL * left_full, fill_attr)
-        if left_partial:
-            self._safe(scr, row, x + H - left_full - 1, BOX_H_A, fill_attr)
-        if right_full:
-            self._safe(scr, row, x + H + 1, SL_FULL * right_full, fill_attr)
-        if right_partial:
-            self._safe(scr, row, x + H + 1 + right_full, BOX_H_A, fill_attr)
-
-        self._safe(scr, row, x + H, BOX_V, curses.A_BOLD)
 
     def _mute_ind(self, scr, row, x, key):
         if self.state[key]["mute"]:
@@ -772,7 +728,7 @@ class EvoTUI:
 
         self._box_side(scr, row, cx, iw=bw)
         if sub is None:
-            self._dual_slider(scr, row, cx + SLIDER_OFF, frac, active, color, w=sw)
+            self._pan_slider(scr, row, cx + SLIDER_OFF, frac, active, color, w=sw)
         else:
             self._hslider(scr, row, cx + SLIDER_OFF, frac, muted, active, color, w=sw)
         self._slider_map.append((row, cx + SLIDER_OFF, sw, idx))
@@ -780,16 +736,23 @@ class EvoTUI:
 
         self._box_side(scr, row, cx, iw=bw)
         lbl_attr = curses.A_BOLD if active else curses.A_DIM
+        dial_active = bool(active and self.num_buf)
         if sub is None:
             self._safe(scr, row, cx + SLIDER_OFF, "IN", lbl_attr)
             pct = f"Mix: {val:3.0f}%"
             mid = cx + SLIDER_OFF + (sw - len(pct)) // 2
-            self._safe(scr, row, mid, pct, lbl_attr)
+            pct_attr = curses.color_pair(C_YELLOW) | curses.A_BOLD if dial_active else lbl_attr
+            self._safe(scr, row, mid, pct, pct_attr)
             self._safe(scr, row, cx + SLIDER_OFF + sw - 3, "OUT", lbl_attr)
         else:
             vlabel = "Vol:" if key.startswith("output") else "Gain:"
             val_str = f"{vlabel:5s} {val:+6.1f} dB"
-            val_attr = curses.color_pair(C_RED) if muted else (lbl_attr)
+            if dial_active:
+                val_attr = curses.color_pair(C_YELLOW) | curses.A_BOLD
+            elif muted:
+                val_attr = curses.color_pair(C_RED)
+            else:
+                val_attr = lbl_attr
             self._safe(scr, row, cx + SLIDER_OFF, val_str, val_attr)
             if self._has_phantom(idx):
                 self._phantom_ind(scr, row, cx + bw - 9, key)
@@ -826,7 +789,15 @@ class EvoTUI:
                 pidx, (param, _, lo, hi, _) = pan_params[slot]
                 val = mstate[key][param]
                 sel = sel_sec and self._mixer_param == pidx
-                self._narrow_pan_slider(scr, row, cx + 2, (val - lo) / (hi - lo), sel, color)
+                self._pan_slider(
+                    scr,
+                    row,
+                    cx + 2,
+                    (val - lo) / (hi - lo),
+                    sel,
+                    color,
+                    w=2 * self._mixer_pan_half + 1,
+                )
             row += 1
 
             self._box_side(scr, row, cx, siw)
@@ -834,12 +805,17 @@ class EvoTUI:
                 pidx, (param, plabel, lo, hi, _) = pan_params[slot]
                 val = mstate[key][param]
                 sel = sel_sec and self._mixer_param == pidx
+                pan_val_attr = (
+                    curses.color_pair(C_YELLOW) | curses.A_BOLD
+                    if sel and self.num_buf
+                    else curses.A_BOLD if sel else curses.A_DIM
+                )
                 self._safe(
                     scr,
                     row,
                     cx + 2,
                     f"{plabel + ':':<{siw - 8}} {val:+5.0f}",
-                    curses.A_BOLD if sel else curses.A_DIM,
+                    pan_val_attr,
                 )
             row += 1
 
@@ -853,12 +829,17 @@ class EvoTUI:
         row += 1
 
         self._box_side(scr, row, cx, siw)
+        vol_val_attr = (
+            curses.color_pair(C_YELLOW) | curses.A_BOLD
+            if vol_sel and self.num_buf
+            else curses.A_BOLD if vol_sel else curses.A_DIM
+        )
         self._safe(
             scr,
             row,
             cx + 2,
             f"{'Vol:':<{siw - 12}} {vol_val:+6.1f} dB",
-            curses.A_BOLD if vol_sel else curses.A_DIM,
+            vol_val_attr,
         )
         row += 1
 
@@ -870,62 +851,81 @@ class EvoTUI:
         scr.erase()
         h, w = scr.getmaxyx()
         cx = (w - (BOX_IW + 2)) // 2
-        title = "SAVE CONFIG" if self._mode == "save" else "LOAD CONFIG"
-        total_h = PICKER_LIST_H + 7 + (1 if self._mode == "save" else 0)
+        action = "SAVE" if self._mode == "save" else "LOAD"
+        total_h = PICKER_LIST_H + 3 + (1 if self._mode == "save" else 0)
         row = max(0, (h - total_h) // 2)
 
-        self._box_attr = curses.color_pair(C_CYAN) | curses.A_BOLD
+        dim = curses.color_pair(C_WHITE) | curses.A_DIM
+        self._box_attr = dim
         self._box_active = False
-        dashes = BOX_IW - len(title) - 3
-        self._safe(scr, row, cx, BOX_TL + BOX_H + " ", self._box_attr)
-        self._safe(scr, row, cx + 3, title, self._box_attr)
-        self._safe(scr, row, cx + 3 + len(title), " " + BOX_H * dashes + BOX_TR, self._box_attr)
+
+        # Top border with action + path (dim)
+        path_str = str(self._config_dir) + "/"
+        max_path = BOX_IW - len(action) - 5  # fixed overhead: "─ " + " " + " ─...─┐"
+        if len(path_str) > max_path:
+            path_str = "\u2026" + path_str[-(max_path - 1):]
+        title = f"{action} {path_str}"
+        title_dashes = BOX_IW - len(title) - 3
+        self._safe(scr, row, cx, BOX_TL + BOX_H + " ", dim)
+        self._safe(scr, row, cx + 3, title, dim)
+        self._safe(scr, row, cx + 3 + len(title), " " + BOX_H * title_dashes + BOX_TR, dim)
         row += 1
 
+        # Empty line between top border and file list
         self._box_side(scr, row, cx)
-        self._safe(scr, row, cx + SLIDER_OFF, f"{self._config_dir}/"[: BOX_IW - 2], curses.A_DIM)
         row += 1
 
-        self._box_side(scr, row, cx)
-        row += 1
-
+        # File list
         for i in range(PICKER_LIST_H):
             self._box_side(scr, row, cx)
             abs_i = self._file_scroll + i
             if not self._file_list and i == 0:
-                self._safe(scr, row, cx + SLIDER_OFF, "(no configs found)", curses.A_DIM)
+                self._safe(scr, row, cx + SLIDER_OFF, "(no configs found)", dim)
             elif abs_i < len(self._file_list):
                 f = self._file_list[abs_i]
                 sel = abs_i == self._file_cursor
                 pre = ARROW_R + " " if sel else "  "
-                attr = curses.color_pair(C_CYAN) | curses.A_NORMAL if sel else 0
+                attr = curses.A_BOLD if sel else curses.A_DIM
                 self._safe(scr, row, cx + SLIDER_OFF, f"{pre}{f.name}"[: BOX_IW - 2], attr)
             row += 1
 
-        self._box_side(scr, row, cx)
-        row += 1
-
+        # File input (save mode only)
         if self._mode == "save":
             self._box_side(scr, row, cx)
-            self._safe(
-                scr, row, cx + SLIDER_OFF, f"File: {self._file_input}_"[: BOX_IW - 2], curses.A_BOLD
-            )
+            file_x = cx + SLIDER_OFF
+            self._safe(scr, row, file_x, "File: ", dim)
+            file_x += 6
+            self._safe(scr, row, file_x, self._file_input, curses.A_BOLD)
+            file_x += len(self._file_input)
+            self._text_cursor_pos = (row, file_x)
+            self._safe(scr, row, file_x, ".json", dim)
             row += 1
 
-        self._box_side(scr, row, cx)
-        hint = (
-            f"{ARROW_U}/{ARROW_D}:select  Enter:save  Esc:cancel"
-            if self._mode == "save"
-            else f"{ARROW_U}/{ARROW_D}:select  Enter:load  Esc:cancel"
-        )
-        self._safe(scr, row, cx + SLIDER_OFF, hint, curses.A_DIM)
-        row += 1
-
-        self._safe(scr, row, cx, BOX_BL + BOX_H * BOX_IW + BOX_BR, self._box_attr)
+        # Bottom border with hints (right-aligned, same style as status bar)
+        action = "save" if self._mode == "save" else "load"
+        hints = [("jk", f" {ARROW_D}{ARROW_U}"), ("\u21b5", f" {action}"), ("Esc", " cancel")]
+        hints_content_w = sum(len(h[0]) + len(h[1]) for h in hints) + len(HSEP) * (len(hints) - 1)
+        hints_w = 1 + hints_content_w + 2  # leading space + content + trailing " ─"
+        bot_dashes = BOX_IW - hints_w
+        self._safe(scr, row, cx, BOX_BL + BOX_H * bot_dashes, dim)
+        col = cx + 1 + bot_dashes + 1  # BL + dashes + leading space
+        for i, hint in enumerate(hints):
+            key, desc = hint[0], hint[1]
+            color = hint[2] if len(hint) > 2 else C_WHITE
+            if i:
+                self._safe(scr, row, col, HSEP, dim)
+                col += len(HSEP)
+            self._safe(scr, row, col, key, curses.color_pair(color) | curses.A_BOLD)
+            col += len(key)
+            self._safe(scr, row, col, desc, dim)
+            col += len(desc)
+        self._safe(scr, row, col, " " + BOX_H, dim)
+        self._safe(scr, row, cx + BOX_IW + 1, BOX_BR, dim)
 
     # -- main draw --
 
     def _draw(self, scr):
+        self._text_cursor_pos = None
         if self._mode in ("save", "load"):
             self._draw_file_picker(scr)
             return
@@ -934,37 +934,29 @@ class EvoTUI:
         h, w = scr.getmaxyx()
         self._slider_map = []
 
-        # Recompute controls body height
-        if self._has_subsections:
-            left_n = len(self._element_groups[0][1])
-            right_n = len(self._element_groups[1][1])
-            left_h = left_n * 4 + (left_n - 1)
-            right_h = right_n * 4 + (right_n - 1)
-            self._controls_body_h = max(left_h, right_h) + 1  # +1 for headers
-        else:
-            active_elems = self._active_elements()
-            self._controls_body_h = len(active_elems) * 4 + (len(active_elems) - 1)
-
-        # Compute layout width — controls always matches mixer so both tabs are equal width
+        # Compute layout width - controls always matches mixer so both tabs are equal width
         max_row_len = max(len(row) for row in self._mixer_rows)
         mixer_w = max_row_len * (self._mixer_section_iw + 3) - 1
         cx = max(0, (w - mixer_w) // 2)
 
-        self._total_h = 2 + self._controls_body_h + 3
+        self._total_h = 3 + self._controls_body_h + 5
         if h < self._total_h or w < mixer_w:
             self._safe(scr, 0, 0, f"Terminal too small ({w}x{h}, need {mixer_w}x{self._total_h})")
             return
 
         row = max(0, (h - self._total_h) // 2)
         self._draw_tab_bar(scr, row, cx, mixer_w)
-        row += 2
+        row += 3
 
         if self._window == "controls":
             row = self._draw_controls_body(scr, row, cx, mixer_w)
+            help_args = self._build_controls_help()
         else:
             row = self._draw_mixer_body(scr, row, cx)
+            help_args = self._build_mixer_help()
 
-        self._draw_status_bar(scr, row, cx, mixer_w)
+        row = self._draw_status_bar(scr, row, cx, mixer_w)
+        self._draw_help_footer(scr, row + 1, cx, *help_args)
 
     def _draw_controls_body(self, scr, row, cx, mixer_w):
         if self._has_subsections:
@@ -975,8 +967,10 @@ class EvoTUI:
         active_elems = self._active_elements()
         for idx in range(len(active_elems)):
             row = self._draw_section(scr, row, cx, idx, sw=sw, bw=bw)
+            if idx < len(active_elems) - 1:
+                row += 1
 
-        return self._draw_help_footer(scr, row + 1, cx, *self._build_controls_help())
+        return row + 1
 
     def _draw_controls_twocol(self, scr, row, cx, mixer_w):
         """Draw two-column controls layout for EVO 8 (inputs left, outputs right)."""
@@ -1002,6 +996,8 @@ class EvoTUI:
                 bw=col_bw,
                 force_inactive=(saved_sub != 0),
             )
+            if idx < len(left_elems) - 1:
+                left_row += 1
 
         # Draw right column (outputs)
         self._controls_subsection = 1
@@ -1016,11 +1012,13 @@ class EvoTUI:
                 bw=col_bw,
                 force_inactive=(saved_sub != 1),
             )
+            if idx < len(right_elems) - 1:
+                right_row += 1
 
         self._controls_subsection = saved_sub
         row = max(left_row, right_row)
 
-        return self._draw_help_footer(scr, row + 1, cx, *self._build_controls_help())
+        return row + 1
 
     def _draw_bus_route(self, scr, row, cx, width):
         """Draw 3-line bus between input and output rows.
@@ -1049,7 +1047,9 @@ class EvoTUI:
             for p in range(width):
                 up = p in wall_positions
                 down = p in output_wall_positions
-                if p == 0 and up:
+                if p == 0 and not up:
+                    chars.append(" ")
+                elif p == 0:
                     chars.append(BUS_J_START)
                 elif up and down:
                     chars.append(BUS_J_CROSS)
@@ -1074,14 +1074,10 @@ class EvoTUI:
         ]
         attr0 = (curses.A_BOLD | curses.color_pair(C_CYAN)) if bus == 0 else dim
         attr1 = (curses.A_BOLD | curses.color_pair(C_CYAN)) if bus == 1 else dim
-        label_x = jx + 3  # after corner + ▶ + space
-
-        # Row 0: ╔▶ OUT 1|2 label
+        # Row 0: ╔▶/╔▷ OUT 1|2 label
         if bus_labels:
-            if bus == 0:
-                self._safe(scr, row, jx, BUS_TL + ARROW_R + " " + bus_labels[0], attr0)
-            else:
-                self._safe(scr, row, label_x, bus_labels[0], attr0)
+            pre0 = ARROW_R if bus == 0 else ARROW_R_EMPTY
+            self._safe(scr, row, jx, BUS_TL + pre0 + " " + bus_labels[0], attr0)
         row += 1
 
         # Row 1: bus double line ending with corner
@@ -1090,12 +1086,12 @@ class EvoTUI:
         self._safe(scr, row, jx, end_cap, bus_attr)
         row += 1
 
-        # Row 2: ╚▶ OUT 3|4 label
+        # Row 2: ╚▶ OUT 3|4 label (active) or dim label with connector (inactive)
         if len(bus_labels) > 1:
             if bus == 1:
                 self._safe(scr, row, jx, BUS_BL + ARROW_R + " " + bus_labels[1], attr1)
             else:
-                self._safe(scr, row, label_x, bus_labels[1], attr1)
+                self._safe(scr, row, jx, BUS_BL + ARROW_R_EMPTY + " " + bus_labels[1], attr1)
 
     def _draw_mixer_body(self, scr, row, cx):
         sec_ow = self._mixer_section_iw + 3
@@ -1127,27 +1123,23 @@ class EvoTUI:
                 flat_idx += 1
             row += self._mixer_section_h + 1
 
-        return self._draw_help_footer(scr, row, cx, *self._build_mixer_help())
+        return row
 
     def _draw_status_bar(self, scr, row, cx, section_w=BOX_IW + 2):
-        if not self.status and not self.num_buf:
-            return
-        iw = section_w - 2
-        self._box_attr = curses.color_pair(C_WHITE) | curses.A_DIM
-        self._box_active = False
-        self._safe(scr, row, cx, BOX_TL + BOX_H * iw + BOX_TR, self._box_attr)
-        row += 1
-        self._box_side(scr, row, cx, iw)
+        dim = curses.color_pair(C_WHITE) | curses.A_DIM
+        # Status / numeric entry line (no box, just text)
+        if self.status_ticks > 0:
+            self.status_ticks -= 1
+        elif self.status:
+            self.status = ""
         if self.num_buf:
             unit = self._current_unit()
-            self._safe(
-                scr,
-                row,
-                cx + SLIDER_OFF,
-                f"= {self.num_buf}_ {unit} (Enter=confirm  Esc=cancel)",
-                curses.color_pair(C_YELLOW),
-            )
-        else:
+            dial_attr = curses.color_pair(C_YELLOW)
+            dial_prefix = f"= {self.num_buf}"
+            self._safe(scr, row, cx + SLIDER_OFF, dial_prefix, dial_attr)
+            self._safe(scr, row, cx + SLIDER_OFF + len(dial_prefix) + 1, f" {unit}", dial_attr)
+            self._text_cursor_pos = (row, cx + SLIDER_OFF + len(dial_prefix))
+        elif self.status:
             attr = (
                 curses.color_pair(C_RED) | curses.A_BOLD
                 if self.status_err
@@ -1155,19 +1147,41 @@ class EvoTUI:
             )
             self._safe(scr, row, cx + SLIDER_OFF, self.status, attr)
         row += 1
-        self._box_bot_labeled(scr, row, cx, "STATUS", iw)
+        # Border with hints — (key, desc[, color]) tuples
+        hints: list = [("s", " save"), ("o", " load"), ("q", " quit")]
+        if self.num_buf:
+            hints = [("↵", ":set", C_YELLOW), ("Esc", ":cancel", C_YELLOW)] + hints
+        # Compute width of hints block: " key desc · key desc … key desc "
+        hints_w = 1 + sum(len(h[0]) + len(h[1]) for h in hints) + len(HSEP) * (len(hints) - 1) + 1
+        dashes = section_w - 1 - hints_w
+        # Draw dashes then trailing BOX_H — same total width as tab bar underline
+        self._safe(scr, row, cx, BOX_H * dashes, dim)
+        self._safe(scr, row, cx + section_w - 1, BOX_H, dim)
+        # Draw hints right-aligned, keys highlighted
+        col = cx + dashes + 1  # +1 for leading space
+        for i, hint in enumerate(hints):
+            key, desc = hint[0], hint[1]
+            color = hint[2] if len(hint) > 2 else C_WHITE
+            if i:
+                self._safe(scr, row, col, HSEP, dim)
+                col += len(HSEP)
+            self._safe(scr, row, col, key, curses.color_pair(color) | curses.A_BOLD)
+            col += len(key)
+            self._safe(scr, row, col, desc, dim)
+            col += len(desc)
+        return row + 1
 
     # -- key handlers --
 
     def _handle_adjust(self, key, fn):
-        """Handle u/d/U/D adjustment keys. Returns True if consumed."""
-        if key == ord("u"):
+        """Handle [/]//{/} adjustment keys. Returns True if consumed."""
+        if key == ord("]"):
             fn(1)
-        elif key == ord("d"):
+        elif key == ord("["):
             fn(-1)
-        elif key == ord("U"):
+        elif key == ord("}"):
             fn(5)
-        elif key == ord("D"):
+        elif key == ord("{"):
             fn(-5)
         else:
             return False
@@ -1192,9 +1206,13 @@ class EvoTUI:
         else:
             self._handle_adjust(key, self._adjust)
 
+    def _select_mixer_section(self, idx):
+        """Set active mixer section and reset param to last (volume)."""
+        self._mixer_section = idx
+        self._mixer_param = len(self._all_mixer_sections[idx][3]) - 1
+
     def _mixer_key(self, key):
-        sections = self._flat_mixer_sections()
-        n_params = len(sections[self._mixer_section][3])
+        n_params = len(self._all_mixer_sections[self._mixer_section][3])
         num_rows = len(self._mixer_rows)
         r, c = self._mixer_row_col()
         if key in (ord("l"), ord("L")):
@@ -1203,27 +1221,21 @@ class EvoTUI:
                 if c + 1 < len(self._mixer_rows[r])
                 else self._mixer_section_at(r, 0)
             )
-            self._mixer_section = new_sec
-            self._mixer_param = len(sections[self._mixer_section][3]) - 1
+            self._select_mixer_section(new_sec)
         elif key in (ord("h"), ord("H")):
             new_sec = (
                 self._mixer_section_at(r, c - 1)
                 if c > 0
                 else self._mixer_section_at(r, len(self._mixer_rows[r]) - 1)
             )
-            self._mixer_section = new_sec
-            self._mixer_param = len(sections[self._mixer_section][3]) - 1
+            self._select_mixer_section(new_sec)
         elif key == ord("j") and num_rows > 1:
-            self._mixer_section = self._mixer_section_at((r + 1) % num_rows, c)
-            self._mixer_param = len(sections[self._mixer_section][3]) - 1
+            self._select_mixer_section(self._mixer_section_at((r + 1) % num_rows, c))
         elif key == ord("k") and num_rows > 1:
-            self._mixer_section = self._mixer_section_at((r - 1) % num_rows, c)
-            self._mixer_param = len(sections[self._mixer_section][3]) - 1
+            self._select_mixer_section(self._mixer_section_at((r - 1) % num_rows, c))
         elif key == ord("m") and self.spec.num_output_pairs > 1:
             self._mixer_bus = (self._mixer_bus + 1) % self.spec.num_output_pairs
-        elif key == ord("K"):
-            self._mixer_param = (self._mixer_param - 1) % n_params
-        elif key == ord("J"):
+        elif key == ord(" "):
             self._mixer_param = (self._mixer_param + 1) % n_params
         else:
             self._handle_adjust(key, self._mixer_adjust)
@@ -1252,6 +1264,16 @@ class EvoTUI:
         while True:
             self._sync()
             self._draw(scr)
+            if self._text_cursor_pos:
+                h, w = scr.getmaxyx()
+                r, c = self._text_cursor_pos
+                if 0 <= r < h and 0 <= c < w - 1:
+                    curses.curs_set(1)
+                    scr.move(r, c)
+                else:
+                    curses.curs_set(0)
+            else:
+                curses.curs_set(0)
             scr.refresh()
             key = scr.getch()
 
@@ -1287,9 +1309,9 @@ class EvoTUI:
                 self.num_buf = self.num_buf[:-1]
             elif key == ord("-") and not self.num_buf:
                 self.num_buf = "-"
-            elif key == ord(".") and "." not in self.num_buf:
+            elif key == ord(".") and "." not in self.num_buf and len(self.num_buf) < 8:
                 self.num_buf += "."
-            elif 48 <= key <= 57:  # 0-9
+            elif 48 <= key <= 57 and len(self.num_buf) < 8:  # 0-9
                 self.num_buf += chr(key)
             elif self._window == "controls":
                 self._controls_key(key)
