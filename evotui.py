@@ -1060,11 +1060,23 @@ class EvoTUI:
             if mstate.get(key, {}).get("volume", _MIXER_DB_MIN) > _MIXER_DB_MIN:
                 output_wall_positions.add(i * sec_ow + self._mixer_section_iw + 1)
 
-        jx = cx + width  # right junction column
+        # Compute label width to right-align bus switcher within the app
+        evo4_label = " IN 3|4 (LOOP) "
+        bus_labels_all = [
+            label for key, label, _, _ in self._mixer_rows[1] if key.startswith("output_pair")
+        ]
+        if self.spec.num_output_pairs == 1:
+            label_w = len(evo4_label) + 1  # +1 reserves one connector char at right end
+        else:
+            label_w = 3 + max(len(l) for l in bus_labels_all[:2]) if bus_labels_all else 0
 
-        def _bus_chars():
+        jx = cx + width - label_w  # right junction: labels end at cx + width - 1
+
+        def _bus_chars(n=None):
+            if n is None:
+                n = jx - cx
             chars = []
-            for p in range(width):
+            for p in range(n):
                 up = p in wall_positions
                 down = p in output_wall_positions
                 if p == 0 and not up:
@@ -1082,36 +1094,30 @@ class EvoTUI:
             return "".join(chars)
 
         if self.spec.num_output_pairs == 1:
-            # EVO 4: single static bus - row 0 and row 2 blank, row 1 has the line
-            self._safe(scr, row + 1, cx, _bus_chars(), bus_attr)
-            self._safe(scr, row + 1, jx, ARROW_R + " IN 3|4 (LOOP)", bus_attr)
+            # EVO 4: single static bus - row 1 has the line, rows 0 and 2 blank
+            self._safe(scr, row + 1, cx, _bus_chars(width), bus_attr)
+            self._safe(scr, row + 1, jx, evo4_label, bus_attr)
             return
 
         # EVO 8: interactive bus selector
         bus = self._mixer_bus
-        bus_labels = [
-            label for key, label, _, _ in self._mixer_rows[1] if key.startswith("output_pair")
-        ]
+        bus_labels = bus_labels_all
         attr0 = (curses.A_BOLD | curses.color_pair(C_CYAN)) if bus == 0 else dim
         attr1 = (curses.A_BOLD | curses.color_pair(C_CYAN)) if bus == 1 else dim
-        # Row 0: ╔▶/╔▷ OUT 1|2 label
+
+        # Row 1: bus line + junction + OUT 1|2 label (same line as bus)
+        # ╦ when OUT 1|2 active: line continues right AND branches down to OUT 3|4
+        # ╗ when OUT 3|4 active: line terminates, drops straight down
+        self._safe(scr, row + 1, cx, _bus_chars(), bus_attr)
         if bus_labels:
             pre0 = ARROW_R if bus == 0 else ARROW_R_EMPTY
-            self._safe(scr, row, jx, BUS_TL + pre0 + " " + bus_labels[0], attr0)
-        row += 1
+            junc = BUS_H if bus == 0 else BUS_TR
+            self._safe(scr, row + 1, jx, junc + pre0 + " " + bus_labels[0], attr0)
 
-        # Row 1: bus double line ending with corner
-        self._safe(scr, row, cx, _bus_chars(), bus_attr)
-        end_cap = BUS_BR if bus == 0 else BUS_TR
-        self._safe(scr, row, jx, end_cap, bus_attr)
-        row += 1
-
-        # Row 2: ╚▶ OUT 3|4 label (active) or dim label with connector (inactive)
+        # Row 2: ╚▶/╚▷ OUT 3|4 label
         if len(bus_labels) > 1:
-            if bus == 1:
-                self._safe(scr, row, jx, BUS_BL + ARROW_R + " " + bus_labels[1], attr1)
-            else:
-                self._safe(scr, row, jx, BUS_BL + ARROW_R_EMPTY + " " + bus_labels[1], attr1)
+            pre1 = ARROW_R if bus == 1 else ARROW_R_EMPTY
+            self._safe(scr, row + 2, jx, BUS_BL + pre1 + " " + bus_labels[1], attr1)
 
     def _draw_mixer_body(self, scr, row, cx):
         sec_ow = self._mixer_section_iw + 3
@@ -1452,3 +1458,7 @@ def main():
     except (OSError, RuntimeError) as e:
         print(f"error: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

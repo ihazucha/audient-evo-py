@@ -6,9 +6,15 @@ Audient software is Win/macOS only. CLI `evoctl` and TUI `evotui` implement the 
 
 **How?** A small kernel module `evo_raw` binds EVO's unused DFU interface to obtain device handle without detaching `snd-usb-audio`.
 
+#### EVO 4
 | Controls | Loopback Mixer |
 |----------|----------------|
-| ![TUI controls](screenshots/tui_controls.jpg) | ![TUI mixer](screenshots/tui_mixer.jpg) |
+| ![EVO 4 controls](screenshots/evo4_controls.png) | ![EVO 4 mixer](screenshots/evo4_mixer.png) |
+
+#### EVO 8
+| Controls | Loopback Mixer |
+|----------|----------------|
+| ![EVO 8 controls](screenshots/evo8_controls.png) | ![EVO 8 mixer](screenshots/evo8_mixer.png) |
 
 ## Supported Devices
 

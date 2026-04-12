@@ -11,11 +11,11 @@ requires-python = ">=3.10"
 
 [project.scripts]
 evoctl = "evoctl:main"
-evotui = "tui.app:main"
+evotui = "evotui:main"
 
 [tool.setuptools]
-py-modules = ["evoctl"]
-packages = ["evo", "tui"]
+py-modules = ["evoctl", "evotui"]
+packages = ["evo"]
 
 [tool.ruff]
 line-length = 100
