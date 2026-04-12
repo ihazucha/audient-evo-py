@@ -16,12 +16,6 @@ Audient software is Win/macOS only. CLI `evoctl` and TUI `evotui` implement the 
 |----------|----------------|
 | ![EVO 8 controls](screenshots/evo8_controls.png) | ![EVO 8 mixer](screenshots/evo8_mixer.png) |
 
-## Supported Devices
-
-| | EVO 4 | EVO 8|
-|---|---|---|
-| Device node | `/dev/evo4` | `/dev/evo8` |
-
 ## Requirements
 
 - `snd-usb-audio` (standard linux kernel audio)
